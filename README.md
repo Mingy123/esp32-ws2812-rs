@@ -2,6 +2,15 @@
 
 This project provides firmware for controlling an RGB LED strip using an ESP32 microcontroller.
 
+## Speed Benchmarks
+
+### Microcontroller: ESP32-C3
+
+| Frame Duration (ms) | 60 LEDs | 88 LEDs | 280 LEDs |
+|---|---|---|---|
+| Hardcoded algorithm | - | 7 | 13 |
+| USB control | - | - | - |
+
 ## Project Roadmap
 
 - [x] Get it to work

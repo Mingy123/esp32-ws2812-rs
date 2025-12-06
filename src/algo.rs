@@ -8,24 +8,24 @@ use crate::RGBPixel;
 // T1H = 0.8us = 64 ticks, T1L = 0.45us = 36 ticks
 // In my testing changing T1L to 48 ticks (0.6us) reduces flickering at the end of the strip
 const WS2812_T0H: u16 = 32;
-const WS2812_T0L: u16 = 68;
+const WS2812_T0L: u16 = 56;
 const WS2812_T1H: u16 = 64;
 const WS2812_T1L: u16 = 48;
 
 pub fn hsv_to_rgb(h: u16, s: u8, v: u8) -> RGBPixel {
   // Normalize h to 0-359 range
   let h = h % 360;
-  
+
   // c = chroma = v * s
   let c = (v as u32 * s as u32) / 255;
-  
+
   // h' = h / 60 (which sector of the color wheel)
   // x = c * (1 - |h' mod 2 - 1|)
   // We compute this using fixed-point math to avoid issues
   let h_prime = h as u32; // 0-359
   let sector = h_prime / 60; // 0-5
   let h_mod = h_prime % 60; // position within sector (0-59)
-  
+
   // |h' mod 2 - 1| ranges from 0 to 1 as h_mod goes 0->60 or 60->0
   // For even sectors (0,2,4): h_mod goes 0->59, so factor = h_mod/60
   // For odd sectors (1,3,5): h_mod goes 0->59, so factor = 1 - h_mod/60
@@ -36,7 +36,7 @@ pub fn hsv_to_rgb(h: u16, s: u8, v: u8) -> RGBPixel {
     // Falling edge: x goes from c to 0 as h_mod goes 0 to 59
     (c * (60 - h_mod)) / 60
   };
-  
+
   let m = v as u32 - c;
 
   let (r1, g1, b1) = match sector {
@@ -72,4 +72,66 @@ pub fn rgb_to_pulses(pixel: &RGBPixel, pulses: &mut [PulseCode]) {
   byte_to_pulses(pixel.g, &mut pulses[0..8]);
   byte_to_pulses(pixel.r, &mut pulses[8..16]);
   byte_to_pulses(pixel.b, &mut pulses[16..24]);
+}
+
+/// Helper function to format and print elapsed time to USB serial
+/// Formats time as milliseconds with microsecond precision (e.g., "12.345ms")
+pub fn print_elapsed_time<'a, Dm: esp_hal::DriverMode>(serial: &mut esp_hal::usb_serial_jtag::UsbSerialJtag<'a, Dm>, elapsed: esp_hal::time::Duration) {
+  let micros = elapsed.as_micros();
+  let millis = micros / 1000;
+  let frac = micros % 1000;
+
+  // Manual formatting in no_std environment
+  let mut buffer = [0u8; 64];
+  let mut pos = 0;
+
+  // Write "Frame time: "
+  let prefix = b"Frame time: ";
+  buffer[pos..pos + prefix.len()].copy_from_slice(prefix);
+  pos += prefix.len();
+
+  // Format milliseconds
+  pos += format_u64(millis, &mut buffer[pos..]);
+
+  // Add decimal point
+  buffer[pos] = b'.';
+  pos += 1;
+
+  // Format microseconds (3 digits with leading zeros)
+  buffer[pos] = b'0' + ((frac / 100) % 10) as u8;
+  buffer[pos + 1] = b'0' + ((frac / 10) % 10) as u8;
+  buffer[pos + 2] = b'0' + (frac % 10) as u8;
+  pos += 3;
+
+  // Add "ms\n"
+  buffer[pos] = b'm';
+  buffer[pos + 1] = b's';
+  buffer[pos + 2] = b'\n';
+  pos += 3;
+
+  let _ = serial.write(&buffer[..pos]);
+}
+
+/// Helper to format a u64 into a byte buffer, returns number of bytes written
+fn format_u64(mut n: u64, buffer: &mut [u8]) -> usize {
+  if n == 0 {
+    buffer[0] = b'0';
+    return 1;
+  }
+
+  let mut temp = [0u8; 20]; // Max u64 is 20 digits
+  let mut i = 0;
+
+  while n > 0 {
+    temp[i] = b'0' + (n % 10) as u8;
+    n /= 10;
+    i += 1;
+  }
+
+  // Reverse into buffer
+  for j in 0..i {
+    buffer[j] = temp[i - 1 - j];
+  }
+
+  i
 }

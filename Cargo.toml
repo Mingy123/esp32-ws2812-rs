@@ -9,13 +9,9 @@ name = "rgb-led"
 path = "./src/bin/main.rs"
 
 [dependencies]
-esp-hal = { version = "1.0.0", features = ["esp32c3", "unstable"] }
-
-
-esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32c3"] }
-
 critical-section = "1.2.0"
-
+esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32c3"] }
+esp-hal = { version = "1.0.0", features = ["esp32c3", "unstable"] }
 
 [profile.dev]
 # Rust debug is too slow.

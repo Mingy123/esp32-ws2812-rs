@@ -11,8 +11,11 @@ use esp_hal::delay::Delay;
 use esp_hal::gpio::Level;
 use esp_hal::main;
 use esp_hal::rmt::{Rmt, TxChannelConfig, TxChannelCreator};
-use esp_hal::time::Rate;
-use rgb_led::{LEDStrip, StripSetting};
+use esp_hal::time::{Instant, Rate};
+use esp_hal::usb_serial_jtag::UsbSerialJtag;
+use rgb_led::{LEDStrip, StripSetting, print_elapsed_time};
+
+const FRAME_DURATION_MS: u64 = 20;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -29,6 +32,9 @@ fn main() -> ! {
   let peripherals = esp_hal::init(config);
   let rmt = Rmt::new(peripherals.RMT, Rate::from_mhz(80)).unwrap();
 
+  let mut usb_serial = UsbSerialJtag::new(peripherals.USB_DEVICE);
+  usb_serial.write(b"LED Strip Example Starting...\n").unwrap();
+
   // Configure TX channel on GPIO3
   let mut channel = rmt
     .channel0
@@ -42,7 +48,8 @@ fn main() -> ! {
 
   let delay = Delay::new();
   let mut strip: LEDStrip = LEDStrip::new();
-  strip.set_brightness(0.05);
+  strip.set_frame_per_cycle(0.01);
+  strip.set_brightness(0.2);
 
   strip.set_setting(StripSetting::RainbowCycle {
     cycles: 2.0,
@@ -50,13 +57,17 @@ fn main() -> ! {
 
   // Main loop: update pixels, fill pulse data, and transmit
   loop {
-    // Recompute pixel data
+    let now = Instant::now();
     strip.update_pixels();
-    // Send data to LED strip
     strip.fill_pulse_data();
-    let pulse_data = strip.get_pulse_data_limited(1000);
+    let pulse_data = strip.get_pulse_data_limited(88);
     let transaction = channel.transmit(pulse_data).unwrap();
     channel = transaction.wait().unwrap();
-    delay.delay_millis(20);
+    let elapsed = now.elapsed();
+    // print_elapsed_time(&mut usb_serial, elapsed);
+    // wait such that FRAME_DURATION_MS per frame is maintained
+    if elapsed.as_millis() < FRAME_DURATION_MS {
+      delay.delay_millis((FRAME_DURATION_MS - elapsed.as_millis()) as u32);
+    }
   }
 }

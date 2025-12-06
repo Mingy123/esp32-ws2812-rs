@@ -6,6 +6,8 @@ use esp_hal::rmt::PulseCode;
 
 use crate::algo::{hsv_to_rgb, rgb_to_pulses};
 
+pub use crate::algo::print_elapsed_time;
+
 pub const NUM_LEDS: usize = 280;
 
 #[derive(Copy, Clone, Default)]
@@ -71,7 +73,7 @@ impl LEDStrip {
       setting: StripSetting::Off,
       brightness: 1.0,
       frame: 0.0,
-      frame_per_cycle: 0.001,
+      frame_per_cycle: 0.01,
     }
   }
 
@@ -104,17 +106,25 @@ impl LEDStrip {
   pub fn set_setting(&mut self, setting: StripSetting) {
     self.setting = setting;
   }
-  
+
   pub fn get_setting(&self) -> StripSetting {
     self.setting
   }
-  
+
   pub fn set_brightness(&mut self, brightness: f32) {
     self.brightness = brightness;
   }
 
   pub fn get_brightness(&self) -> f32 {
     self.brightness
+  }
+
+  pub fn set_frame_per_cycle(&mut self, fpc: f32) {
+    self.frame_per_cycle = fpc;
+  }
+
+  pub fn get_frame_per_cycle(&self) -> f32 {
+    self.frame_per_cycle
   }
 
   /// Fill `pulse_data` buffer with current pixel state
