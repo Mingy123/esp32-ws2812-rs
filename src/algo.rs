@@ -6,10 +6,11 @@ use crate::RGBPixel;
 // WS2812B timing (in RMT ticks at 80MHz clock with divider 1)
 // T0H = 0.4us = 32 ticks, T0L = 0.85us = 68 ticks
 // T1H = 0.8us = 64 ticks, T1L = 0.45us = 36 ticks
+// In my testing changing T1L to 48 ticks (0.6us) reduces flickering at the end of the strip
 const WS2812_T0H: u16 = 32;
 const WS2812_T0L: u16 = 68;
 const WS2812_T1H: u16 = 64;
-const WS2812_T1L: u16 = 36;
+const WS2812_T1L: u16 = 48;
 
 pub fn hsv_to_rgb(h: u16, s: u8, v: u8) -> RGBPixel {
   // Normalize h to 0-359 range
