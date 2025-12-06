@@ -40,12 +40,12 @@ fn main() -> ! {
     )
     .unwrap();
 
-  let mut strip: LEDStrip = LEDStrip::new();
   let delay = Delay::new();
+  let mut strip: LEDStrip = LEDStrip::new();
+  strip.set_brightness(0.05);
 
   strip.set_setting(StripSetting::RainbowCycle {
     cycles: 2.0,
-    brightness: 0.1,    
   });
 
   // Main loop: update pixels, fill pulse data, and transmit
@@ -54,7 +54,7 @@ fn main() -> ! {
     strip.update_pixels();
     // Send data to LED strip
     strip.fill_pulse_data();
-    let pulse_data = strip.get_pulse_data_limited(116);
+    let pulse_data = strip.get_pulse_data_limited(1000);
     let transaction = channel.transmit(pulse_data).unwrap();
     channel = transaction.wait().unwrap();
     delay.delay_millis(20);

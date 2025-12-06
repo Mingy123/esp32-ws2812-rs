@@ -42,15 +42,22 @@ pub enum StripSetting {
   SolidColor { r: u8, g: u8, b: u8 },
   /// Rainbow cycle animation. `cycles` defines how many full rainbow cycles
   /// appear across the entire strip length (e.g., 1.0 = one rainbow, 2.0 = two rainbows)
-  RainbowCycle { cycles: f32, brightness: f32 },
+  RainbowCycle { cycles: f32 },
   Custom,
   Off,
 }
 
 pub struct LEDStrip {
+  /// Buffer holding the RGB values for each LED
   pixels: [RGBPixel; NUM_LEDS],
+  /// Buffer holding the RMT pulse data for the entire strip
   pulse_data: [PulseCode; NUM_LEDS * 24 + 1],
+  /// Setting for rendering pixels in update_pixels()
   setting: StripSetting,
+  /// Global brightness level, applied in update_pixels().
+  /// Can be anything above 0.0, above 1.0 to brighten further.
+  brightness: f32,
+  /// Frame counter for animations
   frame: u32,
 }
 
@@ -60,6 +67,7 @@ impl LEDStrip {
       pixels: [RGBPixel::off(); NUM_LEDS],
       pulse_data: [PulseCode::default(); NUM_LEDS * 24 + 1],
       setting: StripSetting::Off,
+      brightness: 1.0,
       frame: 0,
     }
   }
@@ -93,6 +101,18 @@ impl LEDStrip {
   pub fn set_setting(&mut self, setting: StripSetting) {
     self.setting = setting;
   }
+  
+  pub fn get_setting(&self) -> StripSetting {
+    self.setting
+  }
+  
+  pub fn set_brightness(&mut self, brightness: f32) {
+    self.brightness = brightness;
+  }
+
+  pub fn get_brightness(&self) -> f32 {
+    self.brightness
+  }
 
   /// Fill `pulse_data` buffer with current pixel state
   pub fn fill_pulse_data(&mut self) {
@@ -106,21 +126,20 @@ impl LEDStrip {
     match self.setting {
       StripSetting::SolidColor { r, g, b } => {
         for pixel in self.pixels.iter_mut() {
-          pixel.r = r;
-          pixel.g = g;
-          pixel.b = b;
+          pixel.r = ((r as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          pixel.g = ((g as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          pixel.b = ((b as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
         }
       }
-      StripSetting::RainbowCycle { cycles, brightness } => {
+      StripSetting::RainbowCycle { cycles } => {
         let len = self.pixels.len() as f32;
         for (i, pixel) in self.pixels.iter_mut().enumerate() {
           // Calculate hue: position along strip * cycles * 360 degrees + animation offset
           let hue = ((i as f32 / len) * cycles * 360.0 + self.frame as f32) % 360.0;
-          let value = brightness * 255.0;
-          let rgb = hsv_to_rgb(hue as u16, 255, value as u8);
-          pixel.r = rgb.r;
-          pixel.g = rgb.g;
-          pixel.b = rgb.b;
+          let rgb = hsv_to_rgb(hue as u16, 255, 255);
+          pixel.r = ((rgb.r as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          pixel.g = ((rgb.g as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          pixel.b = ((rgb.b as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
         }
       }
       StripSetting::Off => {
