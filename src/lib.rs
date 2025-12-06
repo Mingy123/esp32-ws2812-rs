@@ -87,20 +87,30 @@ impl LEDStrip {
     self.pixels.get(index)
   }
 
-  pub fn get_pulse_data(&self) -> &[PulseCode] {
-    &self.pulse_data
+  // Return a slice from the same one as the input buffer because if the buffer is bigger than necessary,
+  // only the first part should be sent.
+  // The last PulseCode needs to be the end marker.
+
+  /// Copy pulse data into the provided buffer.
+  pub fn get_pulse_data<'a>(&self, buffer: &'a mut [PulseCode]) -> &'a [PulseCode] {
+    if buffer.len() < self.pulse_data.len() {
+      panic!("Buffer too small for pulse data");
+    }
+    buffer.copy_from_slice(&self.pulse_data);
+    &buffer[..self.pulse_data.len()]
   }
 
-  /// Get pulse data for `num` LEDs.
-  /// Modifies its own `pulse_data` buffer to add end marker.
-  pub fn get_pulse_data_limited(&mut self, num: usize) -> &[PulseCode] {
-    let len = if num <= NUM_LEDS {
-      num
-    } else {
-      NUM_LEDS
-    };
-    self.pulse_data[len * 24] = PulseCode::end_marker();
-    &self.pulse_data[..len * 24 + 1]
+  /// Copy pulse data for `num` LEDs into the provided buffer.
+  /// Adds end marker after the specified number of LEDs.
+  pub fn get_pulse_data_limited<'a>(&self, num: usize, buffer: &'a mut [PulseCode]) -> &'a [PulseCode] {
+    let len = if num <= NUM_LEDS { num } else { NUM_LEDS };
+    let required_len = len * 24 + 1;
+    if buffer.len() < required_len {
+      panic!("Buffer too small for limited pulse data");
+    }
+    buffer[..len * 24].copy_from_slice(&self.pulse_data[..len * 24]);
+    buffer[len * 24] = PulseCode::end_marker();
+    &buffer[..required_len]
   }
 
   pub fn set_setting(&mut self, setting: StripSetting) {
