@@ -7,8 +7,11 @@ This project provides firmware for controlling an RGB LED strip using an ESP32 m
 - [x] Get it to work
 - [x] Custom pixel control
 - [x] Rainbow cycle animation
+- [ ] Global brightness control
+- [x] Dynamic transmission size (sometimes we only want to light the first N LEDs)
 - [ ] USB interface for desktop control
 - [ ] Additional animations (e.g. breathing, flashing)
+- [ ] Power saving when PC goes to sleep
 
 ## Usage
 

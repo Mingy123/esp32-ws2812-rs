@@ -7,10 +7,12 @@
 )]
 
 use esp_hal::clock::CpuClock;
+use esp_hal::delay::Delay;
+use esp_hal::gpio::Level;
 use esp_hal::main;
-use esp_hal::rmt::{PulseCode, Rmt, TxChannelCreator};
-use esp_hal::time::{Duration, Instant, Rate};
-use rgb_led::{LEDStrip, PULSE_DATA_SIZE, RGBPixel, StripSetting, ws2812_tx_config};
+use esp_hal::rmt::{Rmt, TxChannelConfig, TxChannelCreator};
+use esp_hal::time::Rate;
+use rgb_led::{LEDStrip, StripSetting};
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -30,32 +32,31 @@ fn main() -> ! {
   // Configure TX channel on GPIO3
   let mut channel = rmt
     .channel0
-    .configure_tx(peripherals.GPIO3, ws2812_tx_config())
+    .configure_tx(peripherals.GPIO3,
+      TxChannelConfig::default()
+        .with_clk_divider(1)
+        .with_idle_output_level(Level::Low)
+        .with_idle_output(true)
+    )
     .unwrap();
 
   let mut strip: LEDStrip = LEDStrip::new();
-  // strip.set_setting(StripSetting::RainbowCycle {
-  //   cycles: 2.0,
-  //   brightness: 0.1,    
-  // });
-  strip.set_setting(StripSetting::Custom);
-  strip.set_pixel(0, RGBPixel::blue());
-  strip.set_pixel(90, RGBPixel::blue());
-  strip.set_pixel(120, RGBPixel::blue());
-  strip.set_pixel(220, RGBPixel::blue());
-  strip.set_pixel(278, RGBPixel::blue());
+  let delay = Delay::new();
 
-  let mut pulse_data: [PulseCode; PULSE_DATA_SIZE] = [PulseCode::default(); PULSE_DATA_SIZE];
+  strip.set_setting(StripSetting::RainbowCycle {
+    cycles: 2.0,
+    brightness: 0.1,    
+  });
 
   // Main loop: update pixels, fill pulse data, and transmit
   loop {
     // Recompute pixel data
     strip.update_pixels();
     // Send data to LED strip
-    strip.fill_pulse_data(&mut pulse_data);
-    let transaction = channel.transmit(&pulse_data).unwrap();
+    strip.fill_pulse_data();
+    let pulse_data = strip.get_pulse_data_limited(116);
+    let transaction = channel.transmit(pulse_data).unwrap();
     channel = transaction.wait().unwrap();
-    let delay_start = Instant::now();
-    while delay_start.elapsed() < Duration::from_millis(20) {}
+    delay.delay_millis(20);
   }
 }
