@@ -57,8 +57,10 @@ pub struct LEDStrip {
   /// Global brightness level, applied in update_pixels().
   /// Can be anything above 0.0, above 1.0 to brighten further.
   brightness: f32,
-  /// Frame counter for animations
-  frame: u32,
+  /// Frame counter for animations, ranges from 0.0 to 1.0 per cycle
+  frame: f32,
+  /// How much to increment frame per update (speed of animation)
+  frame_per_cycle: f32,
 }
 
 impl LEDStrip {
@@ -68,7 +70,8 @@ impl LEDStrip {
       pulse_data: [PulseCode::default(); NUM_LEDS * 24 + 1],
       setting: StripSetting::Off,
       brightness: 1.0,
-      frame: 0,
+      frame: 0.0,
+      frame_per_cycle: 0.001,
     }
   }
 
@@ -135,7 +138,7 @@ impl LEDStrip {
         let len = self.pixels.len() as f32;
         for (i, pixel) in self.pixels.iter_mut().enumerate() {
           // Calculate hue: position along strip * cycles * 360 degrees + animation offset
-          let hue = ((i as f32 / len) * cycles * 360.0 + self.frame as f32) % 360.0;
+          let hue = ((i as f32 / len) * cycles * 360.0 + self.frame * 360.0) % 360.0;
           let rgb = hsv_to_rgb(hue as u16, 255, 255);
           pixel.r = ((rgb.r as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
           pixel.g = ((rgb.g as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
@@ -150,7 +153,7 @@ impl LEDStrip {
       }
     }
     // Advance frame for animations
-    self.frame = (self.frame + 1) % 360;
+    self.frame = (self.frame + self.frame_per_cycle) % 1.0;
   }
 
   pub fn clear(&mut self) {
