@@ -73,6 +73,8 @@ pub struct LEDStrip {
   num_leds_to_update: usize,
   /// Number of update + write to RMT per second
   frames_per_second: u8,
+  /// Whether to reverse the animation direction (subtract from phase instead of add)
+  reverse_animation: bool,
 }
 
 impl Default for LEDStrip {
@@ -88,50 +90,50 @@ impl LEDStrip {
       pixels: [RGBPixel::off(); NUM_LEDS],
       pulse_data: [PulseCode::default(); NUM_LEDS * 24 + 1],
       setting: StripSetting::Custom,
-      brightness: 1.0,
+      brightness: 0.05,
       phase: 0.0,
       phase_step: 0.01,
       num_leds_to_update: NUM_LEDS,
       frames_per_second: 25,
+      reverse_animation: false,
     }
   }
 
-  pub fn set_pixel(&mut self, index: usize, pixel: RGBPixel) {
+  pub fn get_frames_per_second(&self) -> u8 {
+    self.frames_per_second
+  }
+
+  fn set_pixel(&mut self, index: usize, pixel: RGBPixel) {
     if index < NUM_LEDS {
       self.pixels[index] = pixel;
     }
   }
 
-  pub fn get_pixel(&self, index: usize) -> Option<&RGBPixel> {
-    self.pixels.get(index)
-  }
-
-  pub fn set_setting(&mut self, setting: StripSetting) {
+  fn set_setting(&mut self, setting: StripSetting) {
     self.setting = setting;
   }
 
-  pub fn get_setting(&self) -> StripSetting {
-    self.setting
-  }
-
-  pub fn set_brightness(&mut self, brightness: f32) {
+  fn set_brightness(&mut self, brightness: f32) {
     self.brightness = brightness;
   }
 
-  pub fn get_brightness(&self) -> f32 {
-    self.brightness
-  }
-
-  pub fn set_phase_step(&mut self, fpc: f32) {
+  fn set_phase_step(&mut self, fpc: f32) {
     self.phase_step = fpc;
   }
 
-  pub fn get_phase_step(&self) -> f32 {
-    self.phase_step
+  fn set_reverse_animation(&mut self, reverse: bool) {
+    self.reverse_animation = reverse;
   }
 
-  pub fn get_frames_per_second(&self) -> u8 {
-    self.frames_per_second
+  fn clear(&mut self) -> bool {
+    let mut changed = false;
+    for pixel in self.pixels.iter_mut() {
+      if pixel.r != 0 || pixel.g != 0 || pixel.b != 0 {
+        changed = true;
+        *pixel = RGBPixel::off();
+      }
+    }
+    changed
   }
 
   // Return a slice from the same one as the input buffer because if the buffer is bigger than necessary,
@@ -169,14 +171,16 @@ impl LEDStrip {
     &buffer[..required_len]
   }
 
-  /// Fill `pulse_data` buffer with current pixel state
-  pub fn fill_pulse_data(&mut self) {
+  /// Write pulse data for all LEDs into the internal buffer.
+  pub fn generate_pulse_data(&mut self) {
     for (i, pixel) in self.pixels.iter().enumerate() {
       rgb_to_pulses(pixel, &mut self.pulse_data[i * 24..(i + 1) * 24]);
     }
     self.pulse_data[NUM_LEDS * 24] = PulseCode::end_marker();
   }
 
+  /// Compute new pixel values based on the current setting and update internal pixel buffer.
+  /// Returns true if any pixel values were changed.
   pub fn update_pixels(&mut self) -> bool {
     let mut changed = false;
 
@@ -236,17 +240,10 @@ impl LEDStrip {
       }
     }
     // Advance phase for animations
-    self.phase = (self.phase + self.phase_step) % 1.0;
-    changed
-  }
-
-  pub fn clear(&mut self) -> bool {
-    let mut changed = false;
-    for pixel in self.pixels.iter_mut() {
-      if pixel.r != 0 || pixel.g != 0 || pixel.b != 0 {
-        changed = true;
-        *pixel = RGBPixel::off();
-      }
+    if self.reverse_animation {
+      self.phase = (self.phase - self.phase_step + 1.0) % 1.0;
+    } else {
+      self.phase = (self.phase + self.phase_step) % 1.0;
     }
     changed
   }
@@ -334,6 +331,10 @@ impl LEDStrip {
       0x07 => { // Set frames_per_second
         let fps = command.data[0];
         self.frames_per_second = fps;
+      },
+      0x08 => { // Set reverse_animation
+        let reverse = command.data[0] != 0;
+        self.set_reverse_animation(reverse);
       },
       _ => {
         // Unknown command, ignore

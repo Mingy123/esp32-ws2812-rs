@@ -17,7 +17,7 @@ use esp_hal::rmt::{PulseCode, Rmt, TxChannelConfig, TxChannelCreator};
 use esp_hal::time::{Instant, Rate};
 use esp_hal::usb_serial_jtag::UsbSerialJtag;
 use heapless::spsc::{Producer, Queue};
-use rgb_led::{LEDStrip, NUM_LEDS, StripSetting, SerialParser};
+use rgb_led::{LEDStrip, NUM_LEDS, SerialParser};
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -92,11 +92,6 @@ fn main() -> ! {
     .unwrap();
 
   let mut strip: LEDStrip = LEDStrip::new();
-  strip.set_phase_step(0.01);
-  strip.set_brightness(0.05);
-  strip.set_setting(StripSetting::RainbowCycle {
-    cycles: 2.0,
-  });
 
   let mut pulse_buffer = [PulseCode::default(); NUM_LEDS * 24 + 1];
   let delay = Delay::new();
@@ -114,7 +109,7 @@ fn main() -> ! {
 
     let changed = strip.update_pixels();
     if changed {
-      strip.fill_pulse_data();
+      strip.generate_pulse_data();
       let pulse_data = strip.get_pulse_data(&mut pulse_buffer);
       let transaction = channel.transmit(pulse_data).unwrap();
       channel = transaction.wait().unwrap();
