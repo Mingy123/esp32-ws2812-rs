@@ -16,9 +16,11 @@ use esp_hal::{handler, main};
 use esp_hal::rmt::{PulseCode, Rmt, TxChannelConfig, TxChannelCreator};
 use esp_hal::time::{Instant, Rate};
 use esp_hal::usb_serial_jtag::UsbSerialJtag;
-use rgb_led::{LEDStrip, NUM_LEDS, StripSetting, print_elapsed_time};
+use heapless::spsc::{Producer, Queue};
+use rgb_led::{LEDStrip, NUM_LEDS, StripSetting, read_buffer_into_command};
 
-const FRAME_DURATION_MS: u64 = 20;
+const FRAME_PER_SECOND: u32 = 25;
+const FRAME_DURATION_MS: f32 = 1000.0 / FRAME_PER_SECOND as f32;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -35,35 +37,26 @@ static USB_SERIAL: Mutex<RefCell<Option<UsbSerialJtag<'static, esp_hal::Blocking
 static LED_STRIP: Mutex<RefCell<Option<LEDStrip>>> =
   Mutex::new(RefCell::new(None));
 
+static mut USB_QUEUE: Queue<u8, { 16*1024 }> = Queue::new();
+static mut USB_PRODUCER: Option<Producer<'static, u8>> = None;
+
 #[handler]
-fn usb_device() {
+fn usb_serial_isr() {
   critical_section::with(|cs| {
     let mut usb_serial = USB_SERIAL.borrow_ref_mut(cs);
     if let Some(usb_serial) = usb_serial.as_mut() {
-      while let Ok(c) = usb_serial.read_byte() {
-        // Parse bytes and update LED strip setting if valid
-        // Rudimentary command parser. Will upgrade later.
-        if c == b'0' {
-          // Turn off strip
-          critical_section::with(|cs| {
-            if let Some(strip) = LED_STRIP.borrow_ref_mut(cs).as_mut() {
-              strip.set_setting(StripSetting::Off);
+      // Read and store in buffer. Data will be processed in main loop.
+      // I'd like to do "If buffer is full, discard oldest data."
+      // But I made myself able to access only the Producer here (for performance gains hopefully)
+      // So instead just discard new data if full.
+      unsafe {
+        #[allow(static_mut_refs)]
+        if let Some(producer) = USB_PRODUCER.as_mut() {
+          while let Ok(byte) = usb_serial.read_byte() {
+            if producer.enqueue(byte).is_err() {
+              break; // Buffer full, discard remaining data
             }
-          });
-        } else if c == b'1' {
-          // Solid red
-          critical_section::with(|cs| {
-            if let Some(strip) = LED_STRIP.borrow_ref_mut(cs).as_mut() {
-              strip.set_setting(StripSetting::SolidColor { r: 255, g: 0, b: 0 });
-            }
-          });
-        } else if c == b'2' {
-          // Rainbow cycle
-          critical_section::with(|cs| {
-            if let Some(strip) = LED_STRIP.borrow_ref_mut(cs).as_mut() {
-              strip.set_setting(StripSetting::RainbowCycle { cycles: 2.0 });
-            }
-          });
+          }
         }
       }
       usb_serial.reset_rx_packet_recv_interrupt();
@@ -77,9 +70,20 @@ fn main() -> ! {
   let peripherals = esp_hal::init(config);
   let rmt = Rmt::new(peripherals.RMT, Rate::from_mhz(80)).unwrap();
 
+  let mut consumer = unsafe {
+    // These invariants have to be met to keep safety:
+    // Only one mutable reference exists to the queue, producer, and consumer.
+    // split() is only called once and nothing touches USB_QUEUE afterwards.
+    // Don't touch USB_QUEUE after this.
+    #[allow(static_mut_refs)]
+    let (producer, consumer) = USB_QUEUE.split();
+    USB_PRODUCER = Some(producer);
+    consumer
+  };
+
   let mut usb_serial = UsbSerialJtag::new(peripherals.USB_DEVICE);
   usb_serial.write(b"LED Strip Example Starting...\n").unwrap();
-  usb_serial.set_interrupt_handler(usb_device);
+  usb_serial.set_interrupt_handler(usb_serial_isr);
   usb_serial.listen_rx_packet_recv_interrupt(); // Enable RX interrupt
   critical_section::with(|cs| USB_SERIAL.borrow_ref_mut(cs).replace(usb_serial)); // Store in mutex
 
@@ -96,7 +100,7 @@ fn main() -> ! {
 
   let mut strip: LEDStrip = LEDStrip::new();
   strip.set_frame_per_cycle(0.01);
-  strip.set_brightness(0.2);
+  strip.set_brightness(0.05);
 
   strip.set_setting(StripSetting::RainbowCycle {
     cycles: 2.0,
@@ -108,31 +112,30 @@ fn main() -> ! {
   let delay = Delay::new();
 
   loop {
+
     let now = Instant::now();
-    let result = critical_section::with(|cs| {
-      if let Some(strip) = LED_STRIP.borrow_ref_mut(cs).as_mut() {
-        strip.update_pixels();
-        strip.fill_pulse_data();
-        Some(strip.get_pulse_data_limited(88, &mut pulse_buffer))
-      } else {
-        None
+    
+    let command = read_buffer_into_command(&mut consumer);
+    
+    let Some(pulse_data) = critical_section::with(|cs| {
+      let mut strip = LED_STRIP.borrow_ref_mut(cs);
+      let strip = strip.as_mut()?;
+      if let Ok(command) = &command {
+        strip.apply_command(command);
       }
-    });
+      strip.update_pixels();
+      strip.fill_pulse_data();
+      Some(strip.get_pulse_data(&mut pulse_buffer))
+    }) else {
+      // Could not get LED strip, skip this frame
+      let elapsed = now.elapsed();
+      delay.delay_micros(((FRAME_DURATION_MS * 1000.0) as u32).saturating_sub(elapsed.as_micros() as u32));
+      continue;
+    };
 
-    match result {
-      Some(pulse_data) => {
-        let transaction = channel.transmit(pulse_data).unwrap();
-        channel = transaction.wait().unwrap();
-      },
-      None => {
-        // If we failed to get the LED strip data, just wait and try again
-        let elapsed = now.elapsed();
-        delay.delay_millis((FRAME_DURATION_MS - elapsed.as_millis()) as u32);
-        continue;
-      },
-    }
+    let transaction = channel.transmit(pulse_data).unwrap();
+    channel = transaction.wait().unwrap();
 
-    let elapsed = now.elapsed();
     // For some reason if this runs and I disconnect serial monitor, the strip stops updating.
     // Probably hanging on the write?
     // critical_section::with(|cs| {
@@ -145,8 +148,7 @@ fn main() -> ! {
     // });
 
     // wait such that FRAME_DURATION_MS per frame is maintained
-    if elapsed.as_millis() < FRAME_DURATION_MS {
-      delay.delay_millis((FRAME_DURATION_MS - elapsed.as_millis()) as u32);
-    }
+    let elapsed = now.elapsed();
+    delay.delay_micros(((FRAME_DURATION_MS * 1000.0) as u32).saturating_sub(elapsed.as_micros() as u32));
   }
 }

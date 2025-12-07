@@ -1,12 +1,15 @@
 #![no_std]
 
 mod algo;
+mod command;
 
 use esp_hal::rmt::PulseCode;
 
 use crate::algo::{hsv_to_rgb, rgb_to_pulses};
 
 pub use crate::algo::print_elapsed_time;
+pub use crate::command::SerialCommand;
+pub use crate::command::read_buffer_into_command;
 
 pub const NUM_LEDS: usize = 280;
 
@@ -41,15 +44,28 @@ impl RGBPixel {
 
 #[derive(Copy, Clone)]
 pub enum StripSetting {
+  Off,
+  Custom,
   SolidColor { r: u8, g: u8, b: u8 },
   /// Rainbow cycle animation. `cycles` defines how many full rainbow cycles
   /// appear across the entire strip length (e.g., 1.0 = one rainbow, 2.0 = two rainbows)
   RainbowCycle { cycles: f32 },
-  Custom,
-  Off,
+}
+
+impl From<u8> for StripSetting {
+  fn from(value: u8) -> Self {
+    match value {
+      0 => StripSetting::Off,
+      1 => StripSetting::Custom,
+      2 => StripSetting::SolidColor { r: 255, g: 0, b: 0 },
+      3 => StripSetting::RainbowCycle { cycles: 2.0 },
+      _ => StripSetting::Off,
+    }
+  }
 }
 
 pub struct LEDStrip {
+  is_on: bool,
   /// Buffer holding the RGB values for each LED
   pixels: [RGBPixel; NUM_LEDS],
   /// Buffer holding the RMT pulse data for the entire strip
@@ -65,9 +81,16 @@ pub struct LEDStrip {
   frame_per_cycle: f32,
 }
 
+impl Default for LEDStrip {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl LEDStrip {
   pub fn new() -> Self {
     Self {
+      is_on: true,
       pixels: [RGBPixel::off(); NUM_LEDS],
       pulse_data: [PulseCode::default(); NUM_LEDS * 24 + 1],
       setting: StripSetting::Off,
@@ -146,6 +169,10 @@ impl LEDStrip {
   }
 
   pub fn update_pixels(&mut self) {
+    if !self.is_on {
+      self.clear();
+      return;
+    }
     match self.setting {
       StripSetting::SolidColor { r, g, b } => {
         for pixel in self.pixels.iter_mut() {
@@ -181,10 +208,33 @@ impl LEDStrip {
       *pixel = RGBPixel::off();
     }
   }
-}
-
-impl Default for LEDStrip {
-  fn default() -> Self {
-    Self::new()
+  
+  // TODO: implement more commands as needed
+  /// Applies a SerialCommand modifying the LED strip settings or individual pixels.
+  pub fn apply_command(&mut self, command: &SerialCommand) {
+    match command.action {
+      0x01 => { // Set on / off
+        if command.length < 1 {
+          return;
+        }
+        let state = command.data[0];
+        self.is_on = state != 0;
+      },
+      0x02 => { // Set global brightness
+        if command.length < 4 {
+          return;
+        }
+        let brightness = f32::from_be_bytes([
+          command.data[0],
+          command.data[1],
+          command.data[2],
+          command.data[3],
+        ]);
+        self.set_brightness(brightness);
+      },
+      _ => {
+        // Unknown command, ignore
+      }
+    }
   }
 }

@@ -30,6 +30,13 @@ If you want to build for a different board, you may need to:
 2. Change the target from "riscv32imc-esp-espidf" to Xtensa or something in `.cargo/config.toml` and `rust-toolchain.toml`.
 3. Adjust any board-specific configurations in the code e.g. GPIO pin assignments in `src/bin/main.rs`.
 
+The ESP32-C3 board provides a built-in USB-Serial-JTAG peripheral, which is used for the serial communication to a host PC.  
+A list of USB peripheral support for other ESP boards can be found here:  
+https://docs.espressif.com/projects/esp-iot-solution/en/latest/usb/usb_overview/usb_overview.html  
+ESP32-S2, ESP32-C2, and ESP8266 do not provide USB-Serial-JTAG. For ESP32-S2, USB-OTG may be implemented.
+
+The serial protocol is documented in [docs/serial_protocol.md](docs/serial_protocol.md).
+
 ## Building and Flashing
 
 Make sure you have the ESP-IDF and Rust toolchain set up for embedded development:  
