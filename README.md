@@ -1,15 +1,7 @@
 # ESP RGB LED Controller
 
-This project provides firmware for controlling an RGB LED strip using an ESP32 microcontroller.
-
-## Speed Benchmarks
-
-### Microcontroller: ESP32-C3
-
-| Frame Duration (ms) | 60 LEDs | 88 LEDs | 280 LEDs |
-|---|---|---|---|
-| Hardcoded algorithm | - | 7 | 13 |
-| USB control | - | - | - |
+This project provides firmware for controlling a WS2812B LED strip (also known as NeoPixels)
+using an ESP32 microcontroller (ESP32-C3 in particular) via a custom serial protocol over USB.
 
 ## Project Roadmap
 
@@ -18,7 +10,7 @@ This project provides firmware for controlling an RGB LED strip using an ESP32 m
 - [x] Rainbow cycle animation
 - [x] Global brightness control
 - [x] Dynamic transmission size (sometimes we only want to light the first N LEDs)
-- [ ] USB interface for desktop control
+- [x] USB interface for desktop control
 - [ ] Additional animations (e.g. breathing, flashing)
 - [ ] Power saving when PC goes to sleep
 
