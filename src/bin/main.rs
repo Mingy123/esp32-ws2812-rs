@@ -34,9 +34,6 @@ esp_bootloader_esp_idf::esp_app_desc!();
 static USB_SERIAL: Mutex<RefCell<Option<UsbSerialJtag<'static, esp_hal::Blocking>>>> =
   Mutex::new(RefCell::new(None));
 
-static LED_STRIP: Mutex<RefCell<Option<LEDStrip>>> =
-  Mutex::new(RefCell::new(None));
-
 static mut USB_QUEUE: Queue<u8, { 16*1024 }> = Queue::new();
 static mut USB_PRODUCER: Option<Producer<'static, u8>> = None;
 
@@ -101,12 +98,9 @@ fn main() -> ! {
   let mut strip: LEDStrip = LEDStrip::new();
   strip.set_frame_per_cycle(0.01);
   strip.set_brightness(0.05);
-
   strip.set_setting(StripSetting::RainbowCycle {
     cycles: 2.0,
   });
-
-  critical_section::with(|cs| LED_STRIP.borrow_ref_mut(cs).replace(strip));
 
   let mut pulse_buffer = [PulseCode::default(); NUM_LEDS * 24 + 1];
   let delay = Delay::new();
@@ -118,28 +112,16 @@ fn main() -> ! {
 
     let command = serial_parser.read_buffer_into_command();
 
-    let Some(pulse_data) = critical_section::with(|cs| {
-      let mut strip = LED_STRIP.borrow_ref_mut(cs);
-      let strip = strip.as_mut()?;
-      if let Some(command) = &command {
-        strip.apply_command(command);
-      }
-      let changed = strip.update_pixels();
-      if !changed {
-        // No change this frame, skip sending data
-        return None;
-      }
+    if let Some(command) = &command {
+      strip.apply_command(command);
+    }
+    let changed = strip.update_pixels();
+    if changed {
       strip.fill_pulse_data();
-      Some(strip.get_pulse_data(&mut pulse_buffer))
-    }) else {
-      // skip this frame
-      let elapsed = now.elapsed();
-      delay.delay_micros(((FRAME_DURATION_MS * 1000.0) as u32).saturating_sub(elapsed.as_micros() as u32));
-      continue;
-    };
-
-    let transaction = channel.transmit(pulse_data).unwrap();
-    channel = transaction.wait().unwrap();
+      let pulse_data = strip.get_pulse_data(&mut pulse_buffer);
+      let transaction = channel.transmit(pulse_data).unwrap();
+      channel = transaction.wait().unwrap();
+    }
 
     // For some reason if this runs and I disconnect serial monitor, the strip stops updating.
     // Probably hanging on the write?

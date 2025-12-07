@@ -47,7 +47,7 @@ will run the rainbow animation.
 
 | Setting ID | Description               | Additional Payload                   |
 |------------|---------------------------|--------------------------------------|
-| 0x00       | Off                       | None                                 |
+| 0x00       | Custom (manual)           | None                                 |
 | 0x01       | Custom (manual)           | None                                 |
 | 0x02       | Solid Color               | 3 bytes (R, G, B)                    |
 | 0x03       | Rainbow Cycle             | 4 bytes (f32): N cycles in strip     |

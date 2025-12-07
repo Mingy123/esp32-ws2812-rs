@@ -44,7 +44,6 @@ impl RGBPixel {
 
 #[derive(Copy, Clone)]
 pub enum StripSetting {
-  Off,
   Custom,
   SolidColor { r: u8, g: u8, b: u8 },
   /// Rainbow cycle animation. `cycles` defines how many full rainbow cycles
@@ -55,11 +54,11 @@ pub enum StripSetting {
 impl From<u8> for StripSetting {
   fn from(value: u8) -> Self {
     match value {
-      0 => StripSetting::Off,
+      0 => StripSetting::Custom,
       1 => StripSetting::Custom,
       2 => StripSetting::SolidColor { r: 255, g: 0, b: 0 },
       3 => StripSetting::RainbowCycle { cycles: 2.0 },
-      _ => StripSetting::Off,
+      _ => StripSetting::Custom,
     }
   }
 }
@@ -95,7 +94,7 @@ impl LEDStrip {
       is_on: true,
       pixels: [RGBPixel::off(); NUM_LEDS],
       pulse_data: [PulseCode::default(); NUM_LEDS * 24 + 1],
-      setting: StripSetting::Off,
+      setting: StripSetting::Custom,
       brightness: 1.0,
       frame: 0.0,
       frame_per_cycle: 0.01,
@@ -218,9 +217,6 @@ impl LEDStrip {
           }
         }
       }
-      StripSetting::Off => {
-        changed = self.clear();
-      }
       StripSetting::Custom => {
         // For the user to custom set pixels directly, do nothing here
         changed = true;
@@ -261,7 +257,7 @@ impl LEDStrip {
       0x03 => { // Set StripSetting
         let setting_id = command.data[0];
         let setting = match setting_id {
-          0x00 => StripSetting::Off,
+          0x00 => StripSetting::Custom,
           0x01 => StripSetting::Custom,
           0x02 => {
             StripSetting::SolidColor {
