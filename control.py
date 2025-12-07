@@ -17,6 +17,7 @@ class LEDController:
     SOF = 0xAA  # Start of frame
     ACTION_CONTROL_ONOFF = 0x01
     ACTION_SET_BRIGHTNESS = 0x02
+    ACTION_SET_STRIPSETTING = 0x03
 
     def __init__(self, port='/dev/mcu0', baudrate=115200, timeout=1):
         """
@@ -125,6 +126,41 @@ class LEDController:
         if not chunked:
             print(f"Brightness set to {brightness}")
 
+    def set_strip_setting(self, setting_id, r=None, g=None, b=None, cycles=None, chunked=False):
+        """
+        Set strip setting (animation/pattern mode).
+
+        Args:
+            setting_id: Setting ID (0x00=Off, 0x01=Custom, 0x02=SolidColor, 0x03=RainbowCycle)
+            r: Red value for SolidColor (0-255)
+            g: Green value for SolidColor (0-255)
+            b: Blue value for SolidColor (0-255)
+            cycles: Number of rainbow cycles for RainbowCycle (float)
+            chunked: If True, send data in small random chunks with delays
+        """
+        payload = bytes([setting_id])
+
+        if setting_id == 0x02:  # SolidColor
+            if r is None or g is None or b is None:
+                raise ValueError("SolidColor requires r, g, b values")
+            payload += bytes([r, g, b])
+            description = f"SolidColor(R={r}, G={g}, B={b})"
+        elif setting_id == 0x03:  # RainbowCycle
+            if cycles is None:
+                raise ValueError("RainbowCycle requires cycles value")
+            payload += struct.pack('>f', cycles)
+            description = f"RainbowCycle(cycles={cycles})"
+        elif setting_id == 0x00:
+            description = "Off"
+        elif setting_id == 0x01:
+            description = "Custom"
+        else:
+            raise ValueError(f"Invalid setting_id: {setting_id}")
+
+        self.send_frame(self.ACTION_SET_STRIPSETTING, payload, chunked=chunked)
+        if not chunked:
+            print(f"Strip setting set to {description}")
+
     def send_malformed_data(self, chunked=False):
         """
         Send intentionally malformed data to test error handling.
@@ -180,14 +216,18 @@ def main():
             print("  1. Turn LED strip ON")
             print("  2. Turn LED strip OFF")
             print("  3. Set brightness")
-            print("  4. Turn LED strip ON (chunked - test buffering)")
-            print("  5. Turn LED strip OFF (chunked - test buffering)")
-            print("  6. Set brightness (chunked - test buffering)")
-            print("  7. Send malformed data (test error recovery)")
-            print("  8. Send malformed data chunked (test buffered error recovery)")
-            print("  9. Exit")
+            print("  4. Set strip setting to Off")
+            print("  5. Set strip setting to Custom")
+            print("  6. Set strip setting to SolidColor")
+            print("  7. Set strip setting to RainbowCycle")
+            print("  8. Turn LED strip ON (chunked - test buffering)")
+            print("  9. Turn LED strip OFF (chunked - test buffering)")
+            print("  10. Set brightness (chunked - test buffering)")
+            print("  11. Send malformed data (test error recovery)")
+            print("  12. Send malformed data chunked (test buffered error recovery)")
+            print("  13. Exit")
 
-            choice = input("\nEnter your choice (1-9): ").strip()
+            choice = input("\nEnter your choice (1-13): ").strip()
 
             if choice == '1':
                 controller.control_onoff(True)
@@ -203,10 +243,34 @@ def main():
                 except ValueError:
                     print("Error: Invalid brightness value")
             elif choice == '4':
-                controller.control_onoff(True, chunked=True)
+                controller.set_strip_setting(0x00)  # Off
             elif choice == '5':
-                controller.control_onoff(False, chunked=True)
+                controller.set_strip_setting(0x01)  # Custom
             elif choice == '6':
+                try:
+                    r = int(input("Enter red (0-255): ").strip())
+                    g = int(input("Enter green (0-255): ").strip())
+                    b = int(input("Enter blue (0-255): ").strip())
+                    if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
+                        controller.set_strip_setting(0x02, r=r, g=g, b=b)  # SolidColor
+                    else:
+                        print("Error: RGB values must be between 0 and 255")
+                except ValueError:
+                    print("Error: Invalid RGB values")
+            elif choice == '7':
+                try:
+                    cycles = float(input("Enter number of rainbow cycles (e.g., 1.0, 2.0): ").strip())
+                    if cycles > 0:
+                        controller.set_strip_setting(0x03, cycles=cycles)  # RainbowCycle
+                    else:
+                        print("Error: Cycles must be greater than 0")
+                except ValueError:
+                    print("Error: Invalid cycles value")
+            elif choice == '8':
+                controller.control_onoff(True, chunked=True)
+            elif choice == '9':
+                controller.control_onoff(False, chunked=True)
+            elif choice == '10':
                 try:
                     brightness = float(input("Enter brightness (0.0 to 1.0): ").strip())
                     if 0.0 <= brightness <= 1.0:
@@ -215,15 +279,15 @@ def main():
                         print("Error: Brightness must be between 0.0 and 1.0")
                 except ValueError:
                     print("Error: Invalid brightness value")
-            elif choice == '7':
+            elif choice == '11':
                 controller.send_malformed_data(chunked=False)
-            elif choice == '8':
+            elif choice == '12':
                 controller.send_malformed_data(chunked=True)
-            elif choice == '9':
+            elif choice == '13':
                 print("Exiting...")
                 break
             else:
-                print("Error: Invalid choice. Please enter 1-9.")
+                print("Error: Invalid choice. Please enter 1-13.")
 
         controller.close()
 

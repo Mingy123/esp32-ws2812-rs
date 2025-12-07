@@ -168,17 +168,25 @@ impl LEDStrip {
     self.pulse_data[NUM_LEDS * 24] = PulseCode::end_marker();
   }
 
-  pub fn update_pixels(&mut self) {
+  pub fn update_pixels(&mut self) -> bool {
+    let mut changed = false;
+    
     if !self.is_on {
-      self.clear();
-      return;
+      changed = self.clear();
+      return changed;
     }
     match self.setting {
       StripSetting::SolidColor { r, g, b } => {
         for pixel in self.pixels.iter_mut() {
-          pixel.r = ((r as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
-          pixel.g = ((g as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
-          pixel.b = ((b as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          let new_r = ((r as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          let new_g = ((g as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          let new_b = ((b as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          if pixel.r != new_r || pixel.g != new_g || pixel.b != new_b {
+            changed = true;
+            pixel.r = new_r;
+            pixel.g = new_g;
+            pixel.b = new_b;
+          }
         }
       }
       StripSetting::RainbowCycle { cycles } => {
@@ -187,26 +195,38 @@ impl LEDStrip {
           // Calculate hue: position along strip * cycles * 360 degrees + animation offset
           let hue = ((i as f32 / len) * cycles * 360.0 + self.frame * 360.0) % 360.0;
           let rgb = hsv_to_rgb(hue as u16, 255, 255);
-          pixel.r = ((rgb.r as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
-          pixel.g = ((rgb.g as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
-          pixel.b = ((rgb.b as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          let new_r = ((rgb.r as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          let new_g = ((rgb.g as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          let new_b = ((rgb.b as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
+          if pixel.r != new_r || pixel.g != new_g || pixel.b != new_b {
+            changed = true;
+            pixel.r = new_r;
+            pixel.g = new_g;
+            pixel.b = new_b;
+          }
         }
       }
       StripSetting::Off => {
-        self.clear();
+        changed = self.clear();
       }
       StripSetting::Custom => {
-        // Custom pattern logic can be implemented here
+        // For the user to custom set pixels directly, do nothing here
       }
     }
     // Advance frame for animations
     self.frame = (self.frame + self.frame_per_cycle) % 1.0;
+    changed
   }
 
-  pub fn clear(&mut self) {
+  pub fn clear(&mut self) -> bool {
+    let mut changed = false;
     for pixel in self.pixels.iter_mut() {
-      *pixel = RGBPixel::off();
+      if pixel.r != 0 || pixel.g != 0 || pixel.b != 0 {
+        changed = true;
+        *pixel = RGBPixel::off();
+      }
     }
+    changed
   }
 
   // TODO: implement more commands
@@ -231,6 +251,40 @@ impl LEDStrip {
           command.data[3],
         ]);
         self.set_brightness(brightness);
+      },
+      0x03 => { // Set StripSetting
+        if command.length < 1 {
+          return;
+        }
+        let setting_id = command.data[0];
+        let setting = match setting_id {
+          0x00 => StripSetting::Off,
+          0x01 => StripSetting::Custom,
+          0x02 => {
+            if command.length < 4 {
+              return;
+            }
+            StripSetting::SolidColor {
+              r: command.data[1],
+              g: command.data[2],
+              b: command.data[3],
+            }
+          },
+          0x03 => {
+            if command.length < 5 {
+              return;
+            }
+            let cycles = f32::from_be_bytes([
+              command.data[1],
+              command.data[2],
+              command.data[3],
+              command.data[4],
+            ]);
+            StripSetting::RainbowCycle { cycles }
+          },
+          _ => return, // Unknown setting, ignore
+        };
+        self.set_setting(setting);
       },
       _ => {
         // Unknown command, ignore

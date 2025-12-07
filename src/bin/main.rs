@@ -124,11 +124,15 @@ fn main() -> ! {
       if let Some(command) = &command {
         strip.apply_command(command);
       }
-      strip.update_pixels();
+      let changed = strip.update_pixels();
+      if !changed {
+        // No change this frame, skip sending data
+        return None;
+      }
       strip.fill_pulse_data();
       Some(strip.get_pulse_data(&mut pulse_buffer))
     }) else {
-      // Could not get LED strip, skip this frame
+      // skip this frame
       let elapsed = now.elapsed();
       delay.delay_micros(((FRAME_DURATION_MS * 1000.0) as u32).saturating_sub(elapsed.as_micros() as u32));
       continue;
