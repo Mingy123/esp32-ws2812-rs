@@ -64,6 +64,7 @@ impl From<u8> for StripSetting {
 }
 
 pub struct LEDStrip {
+  /// Whether update_pixels() should render anything
   is_on: bool,
   /// Buffer holding the RGB values for each LED
   pixels: [RGBPixel; NUM_LEDS],
@@ -74,10 +75,10 @@ pub struct LEDStrip {
   /// Global brightness level, applied in update_pixels().
   /// Can be anything above 0.0, above 1.0 to brighten further.
   brightness: f32,
-  /// Frame counter for animations, ranges from 0.0 to 1.0 per cycle
-  frame: f32,
-  /// How much to increment frame per update (speed of animation)
-  frame_per_cycle: f32,
+  /// Phase counter for animations, ranges from 0.0 to 1.0 per cycle
+  phase: f32,
+  /// How much to increment phase per update (speed of animation)
+  phase_step: f32,
   /// Number of LEDs to update when filling pulse data
   num_leds_to_update: usize,
 }
@@ -96,8 +97,8 @@ impl LEDStrip {
       pulse_data: [PulseCode::default(); NUM_LEDS * 24 + 1],
       setting: StripSetting::Custom,
       brightness: 1.0,
-      frame: 0.0,
-      frame_per_cycle: 0.01,
+      phase: 0.0,
+      phase_step: 0.01,
       num_leds_to_update: NUM_LEDS,
     }
   }
@@ -163,12 +164,12 @@ impl LEDStrip {
     self.brightness
   }
 
-  pub fn set_frame_per_cycle(&mut self, fpc: f32) {
-    self.frame_per_cycle = fpc;
+  pub fn set_phase_step(&mut self, fpc: f32) {
+    self.phase_step = fpc;
   }
 
-  pub fn get_frame_per_cycle(&self) -> f32 {
-    self.frame_per_cycle
+  pub fn get_phase_step(&self) -> f32 {
+    self.phase_step
   }
 
   /// Fill `pulse_data` buffer with current pixel state
@@ -204,7 +205,7 @@ impl LEDStrip {
         let len = self.pixels.len() as f32;
         for (i, pixel) in self.pixels.iter_mut().enumerate() {
           // Calculate hue: position along strip * cycles * 360 degrees + animation offset
-          let hue = ((i as f32 / len) * cycles * 360.0 + self.frame * 360.0) % 360.0;
+          let hue = ((i as f32 / len) * cycles * 360.0 + self.phase * 360.0) % 360.0;
           let rgb = hsv_to_rgb(hue as u16, 255, 255);
           let new_r = ((rgb.r as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
           let new_g = ((rgb.g as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
@@ -222,8 +223,8 @@ impl LEDStrip {
         changed = true;
       }
     }
-    // Advance frame for animations
-    self.frame = (self.frame + self.frame_per_cycle) % 1.0;
+    // Advance phase for animations
+    self.phase = (self.phase + self.phase_step) % 1.0;
     changed
   }
 
@@ -299,14 +300,14 @@ impl LEDStrip {
           ));
         }
       },
-      0x05 => { // Set frame per cycle
-        let frame_per_cycle = f32::from_be_bytes([
+      0x05 => { // Set phase step
+        let phase_step = f32::from_be_bytes([
           command.data[0],
           command.data[1],
           command.data[2],
           command.data[3],
         ]);
-        self.set_frame_per_cycle(frame_per_cycle);
+        self.set_phase_step(phase_step);
       },
       0x06 => { // Set num_leds_to_update
         let num_leds = u16::from_be_bytes([command.data[0], command.data[1]]) as usize;

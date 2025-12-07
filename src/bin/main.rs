@@ -96,7 +96,7 @@ fn main() -> ! {
     .unwrap();
 
   let mut strip: LEDStrip = LEDStrip::new();
-  strip.set_frame_per_cycle(0.01);
+  strip.set_phase_step(0.01);
   strip.set_brightness(0.05);
   strip.set_setting(StripSetting::RainbowCycle {
     cycles: 2.0,
