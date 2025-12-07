@@ -71,7 +71,21 @@ impl SerialCommand {
   pub fn validate_length_with_action(&self) -> bool {
     match self.action {
       0x01 => self.length >= 1,  // Control on/off: 1 byte
-      0x02 => self.length >= 4,  // Set global brightness: 4 bytes (f32)
+      0x02 => {
+        // Set value: at least 1 byte for value ID
+        if self.length < 1 {
+          return false;
+        }
+        // Check minimum length based on value ID
+        match self.data[0] {
+          0x00 => self.length >= 5, // Global brightness: ID + 4 bytes f32
+          0x01 => self.length >= 5, // Phase step: ID + 4 bytes f32
+          0x02 => self.length >= 3, // Num LEDs to update: ID + 2 bytes u16
+          0x03 => self.length >= 2, // Frames per second: ID + 1 byte u8
+          0x04 => self.length >= 2, // Reverse animation: ID + 1 byte bool
+          _ => false, // Unknown value ID
+        }
+      }
       0x03 => {
         // Set StripSetting: at least 1 byte for setting ID
         if self.length < 1 {
@@ -87,10 +101,6 @@ impl SerialCommand {
         }
       }
       0x04 => self.length >= 5,  // Manual color input: 2 bytes index + at least 3 bytes RGB
-      0x05 => self.length >= 4,  // Set frame per cycle: 4 bytes (f32)
-      0x06 => self.length >= 2,  // Set num_leds_to_update: 2 bytes (u16)
-      0x07 => self.length >= 1,  // Set frames_per_second: 1 byte (u8)
-      0x08 => self.length >= 1,  // Set reverse_animation: 1 byte (0 = forward, 1 = reverse)
       _ => false, // Unknown action
     }
   }

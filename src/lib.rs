@@ -255,14 +255,41 @@ impl LEDStrip {
         let state = command.data[0];
         self.is_on = state != 0;
       },
-      0x02 => { // Set global brightness
-        let brightness = f32::from_be_bytes([
-          command.data[0],
-          command.data[1],
-          command.data[2],
-          command.data[3],
-        ]);
-        self.set_brightness(brightness);
+      0x02 => { // Set value
+        let value_id = command.data[0];
+        match value_id {
+          0x00 => { // Global brightness
+            let brightness = f32::from_be_bytes([
+              command.data[1],
+              command.data[2],
+              command.data[3],
+              command.data[4],
+            ]);
+            self.set_brightness(brightness);
+          },
+          0x01 => { // Phase step
+            let phase_step = f32::from_be_bytes([
+              command.data[1],
+              command.data[2],
+              command.data[3],
+              command.data[4],
+            ]);
+            self.set_phase_step(phase_step);
+          },
+          0x02 => { // Num LEDs to update
+            let num_leds = u16::from_be_bytes([command.data[1], command.data[2]]) as usize;
+            self.num_leds_to_update = num_leds.min(NUM_LEDS);
+          },
+          0x03 => { // Frames per second
+            let fps = command.data[1];
+            self.frames_per_second = fps;
+          },
+          0x04 => { // Reverse animation
+            let reverse = command.data[1] != 0;
+            self.set_reverse_animation(reverse);
+          },
+          _ => {}, // Unknown value ID, ignore
+        }
       },
       0x03 => { // Set StripSetting
         let setting_id = command.data[0];
@@ -314,27 +341,6 @@ impl LEDStrip {
             color_data[offset + 2],
           ));
         }
-      },
-      0x05 => { // Set phase step
-        let phase_step = f32::from_be_bytes([
-          command.data[0],
-          command.data[1],
-          command.data[2],
-          command.data[3],
-        ]);
-        self.set_phase_step(phase_step);
-      },
-      0x06 => { // Set num_leds_to_update
-        let num_leds = u16::from_be_bytes([command.data[0], command.data[1]]) as usize;
-        self.num_leds_to_update = num_leds.min(NUM_LEDS);
-      },
-      0x07 => { // Set frames_per_second
-        let fps = command.data[0];
-        self.frames_per_second = fps;
-      },
-      0x08 => { // Set reverse_animation
-        let reverse = command.data[0] != 0;
-        self.set_reverse_animation(reverse);
       },
       _ => {
         // Unknown command, ignore

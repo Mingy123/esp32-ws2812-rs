@@ -16,13 +16,16 @@ class LEDController:
 
     SOF = 0xAA  # Start of frame
     ACTION_CONTROL_ONOFF = 0x01
-    ACTION_SET_BRIGHTNESS = 0x02
+    ACTION_SET_VALUE = 0x02
     ACTION_SET_STRIPSETTING = 0x03
     ACTION_MANUAL_COLOR_INPUT = 0x04
-    ACTION_SET_FRAME_PER_CYCLE = 0x05
-    ACTION_SET_NUM_LEDS_TO_UPDATE = 0x06
-    ACTION_SET_FRAMES_PER_SECOND = 0x07
-    ACTION_SET_REVERSE_ANIMATION = 0x08
+
+    # Value IDs for ACTION_SET_VALUE (0x02)
+    VALUE_BRIGHTNESS = 0x00
+    VALUE_PHASE_STEP = 0x01
+    VALUE_NUM_LEDS = 0x02
+    VALUE_FPS = 0x03
+    VALUE_REVERSE = 0x04
     def set_frames_per_second(self, fps, chunked=False):
         """
         Set frames per second.
@@ -33,8 +36,8 @@ class LEDController:
         """
         if not (0 <= fps <= 255):
             raise ValueError("Frames per second must be between 0 and 255")
-        payload = bytes([fps])
-        self.send_frame(self.ACTION_SET_FRAMES_PER_SECOND, payload, chunked=chunked)
+        payload = bytes([self.VALUE_FPS, fps])
+        self.send_frame(self.ACTION_SET_VALUE, payload, chunked=chunked)
         if not chunked:
             print(f"Frames per second set to {fps}")
 
@@ -46,8 +49,8 @@ class LEDController:
             reverse: True/1 for reverse, False/0 for forward
             chunked: If True, send data in small random chunks with delays
         """
-        payload = bytes([1 if reverse else 0])
-        self.send_frame(self.ACTION_SET_REVERSE_ANIMATION, payload, chunked=chunked)
+        payload = bytes([self.VALUE_REVERSE, 1 if reverse else 0])
+        self.send_frame(self.ACTION_SET_VALUE, payload, chunked=chunked)
         if not chunked:
             print(f"Animation direction set to {'REVERSE' if reverse else 'FORWARD'}")
 
@@ -153,8 +156,8 @@ class LEDController:
             chunked: If True, send data in small random chunks with delays
         """
         # Pack as big-endian 32-bit float
-        payload = struct.pack('>f', brightness)
-        self.send_frame(self.ACTION_SET_BRIGHTNESS, payload, chunked=chunked)
+        payload = bytes([self.VALUE_BRIGHTNESS]) + struct.pack('>f', brightness)
+        self.send_frame(self.ACTION_SET_VALUE, payload, chunked=chunked)
         if not chunked:
             print(f"Brightness set to {brightness}")
 
@@ -205,8 +208,8 @@ class LEDController:
             chunked: If True, send data in small random chunks with delays
         """
         # Pack as big-endian 32-bit float
-        payload = struct.pack('>f', frame_per_cycle)
-        self.send_frame(self.ACTION_SET_FRAME_PER_CYCLE, payload, chunked=chunked)
+        payload = bytes([self.VALUE_PHASE_STEP]) + struct.pack('>f', frame_per_cycle)
+        self.send_frame(self.ACTION_SET_VALUE, payload, chunked=chunked)
         if not chunked:
             print(f"Frame per cycle set to {frame_per_cycle}")
 
@@ -219,8 +222,8 @@ class LEDController:
             chunked: If True, send data in small random chunks with delays
         """
         # Pack as big-endian 16-bit unsigned integer
-        payload = struct.pack('>H', num_leds)
-        self.send_frame(self.ACTION_SET_NUM_LEDS_TO_UPDATE, payload, chunked=chunked)
+        payload = bytes([self.VALUE_NUM_LEDS]) + struct.pack('>H', num_leds)
+        self.send_frame(self.ACTION_SET_VALUE, payload, chunked=chunked)
         if not chunked:
             print(f"Number of LEDs to update set to {num_leds}")
 

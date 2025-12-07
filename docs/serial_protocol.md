@@ -31,15 +31,23 @@ The `Length` field specifies the length of the `Payload` field in bytes, i.e. `N
 | Action | Description               | Payload Description                     |
 |--------|---------------------------|-----------------------------------------|
 | 0x01   | Control on/off            | 1 byte (0 = off, 1 = on)                |
-| 0x02   | Set global brightness     | 4 bytes float (big endian)              |
+| 0x02   | Set value                 | Sets various values (see below)         |
 | 0x03   | Set StripSetting          | Sets the StripSetting enum (see below)  |
 | 0x04   | Manual color input        | Manually set the color of each pixel    |
-| 0x05   | Set phase_step            | 4 bytes float (0 - 1) (big endian)      |
-| 0x06   | Set num_leds_to_update    | 2 bytes unsigned integer (big endian)   |
-| 0x07   | Set frames_per_second     | 1 byte unsigned integer                 |
-| 0x08   | Set reverse_animation     | 1 byte (0 = forward, 1 = reverse)       |
 
 ## Payloads
+
+### Set Value Payload
+
+The Set Value action (0x02) consolidates multiple setting operations.
+
+| Value ID | Description               | Additional Payload                   |
+|----------|---------------------------|--------------------------------------|
+| 0x00     | Global brightness         | 4 bytes (f32, big endian)            |
+| 0x01     | Phase step                | 4 bytes (f32, big endian)            |
+| 0x02     | Num LEDs to update        | 2 bytes (u16, big endian)            |
+| 0x03     | Frames per second         | 1 byte (u8)                          |
+| 0x04     | Reverse animation         | 1 byte (0 = forward, 1 = reverse)    |
 
 ### StripSetting Payload
 
