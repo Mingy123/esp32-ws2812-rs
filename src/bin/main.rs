@@ -17,7 +17,7 @@ use esp_hal::rmt::{PulseCode, Rmt, TxChannelConfig, TxChannelCreator};
 use esp_hal::time::{Instant, Rate};
 use esp_hal::usb_serial_jtag::UsbSerialJtag;
 use heapless::spsc::{Producer, Queue};
-use rgb_led::{LEDStrip, NUM_LEDS, StripSetting, read_buffer_into_command};
+use rgb_led::{LEDStrip, NUM_LEDS, StripSetting, SerialParser};
 
 const FRAME_PER_SECOND: u32 = 25;
 const FRAME_DURATION_MS: f32 = 1000.0 / FRAME_PER_SECOND as f32;
@@ -70,7 +70,7 @@ fn main() -> ! {
   let peripherals = esp_hal::init(config);
   let rmt = Rmt::new(peripherals.RMT, Rate::from_mhz(80)).unwrap();
 
-  let mut consumer = unsafe {
+  let consumer = unsafe {
     // These invariants have to be met to keep safety:
     // Only one mutable reference exists to the queue, producer, and consumer.
     // split() is only called once and nothing touches USB_QUEUE afterwards.
@@ -110,17 +110,18 @@ fn main() -> ! {
 
   let mut pulse_buffer = [PulseCode::default(); NUM_LEDS * 24 + 1];
   let delay = Delay::new();
+  let mut serial_parser = SerialParser::new(consumer);
 
   loop {
 
     let now = Instant::now();
-    
-    let command = read_buffer_into_command(&mut consumer);
-    
+
+    let command = serial_parser.read_buffer_into_command();
+
     let Some(pulse_data) = critical_section::with(|cs| {
       let mut strip = LED_STRIP.borrow_ref_mut(cs);
       let strip = strip.as_mut()?;
-      if let Ok(command) = &command {
+      if let Some(command) = &command {
         strip.apply_command(command);
       }
       strip.update_pixels();

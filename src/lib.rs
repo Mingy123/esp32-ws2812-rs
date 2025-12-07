@@ -9,7 +9,7 @@ use crate::algo::{hsv_to_rgb, rgb_to_pulses};
 
 pub use crate::algo::print_elapsed_time;
 pub use crate::command::SerialCommand;
-pub use crate::command::read_buffer_into_command;
+pub use crate::command::SerialParser;
 
 pub const NUM_LEDS: usize = 280;
 
@@ -208,8 +208,8 @@ impl LEDStrip {
       *pixel = RGBPixel::off();
     }
   }
-  
-  // TODO: implement more commands as needed
+
+  // TODO: implement more commands
   /// Applies a SerialCommand modifying the LED strip settings or individual pixels.
   pub fn apply_command(&mut self, command: &SerialCommand) {
     match command.action {
