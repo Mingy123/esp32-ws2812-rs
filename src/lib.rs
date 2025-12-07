@@ -71,6 +71,8 @@ pub struct LEDStrip {
   phase_step: f32,
   /// Number of LEDs to update when filling pulse data
   num_leds_to_update: usize,
+  /// Number of update + write to RMT per second
+  frames_per_second: u8,
 }
 
 impl Default for LEDStrip {
@@ -90,6 +92,7 @@ impl LEDStrip {
       phase: 0.0,
       phase_step: 0.01,
       num_leds_to_update: NUM_LEDS,
+      frames_per_second: 25,
     }
   }
 
@@ -101,6 +104,34 @@ impl LEDStrip {
 
   pub fn get_pixel(&self, index: usize) -> Option<&RGBPixel> {
     self.pixels.get(index)
+  }
+
+  pub fn set_setting(&mut self, setting: StripSetting) {
+    self.setting = setting;
+  }
+
+  pub fn get_setting(&self) -> StripSetting {
+    self.setting
+  }
+
+  pub fn set_brightness(&mut self, brightness: f32) {
+    self.brightness = brightness;
+  }
+
+  pub fn get_brightness(&self) -> f32 {
+    self.brightness
+  }
+
+  pub fn set_phase_step(&mut self, fpc: f32) {
+    self.phase_step = fpc;
+  }
+
+  pub fn get_phase_step(&self) -> f32 {
+    self.phase_step
+  }
+
+  pub fn get_frames_per_second(&self) -> u8 {
+    self.frames_per_second
   }
 
   // Return a slice from the same one as the input buffer because if the buffer is bigger than necessary,
@@ -136,30 +167,6 @@ impl LEDStrip {
     buffer[..len * 24].copy_from_slice(&self.pulse_data[..len * 24]);
     buffer[len * 24] = PulseCode::end_marker();
     &buffer[..required_len]
-  }
-
-  pub fn set_setting(&mut self, setting: StripSetting) {
-    self.setting = setting;
-  }
-
-  pub fn get_setting(&self) -> StripSetting {
-    self.setting
-  }
-
-  pub fn set_brightness(&mut self, brightness: f32) {
-    self.brightness = brightness;
-  }
-
-  pub fn get_brightness(&self) -> f32 {
-    self.brightness
-  }
-
-  pub fn set_phase_step(&mut self, fpc: f32) {
-    self.phase_step = fpc;
-  }
-
-  pub fn get_phase_step(&self) -> f32 {
-    self.phase_step
   }
 
   /// Fill `pulse_data` buffer with current pixel state
@@ -323,6 +330,10 @@ impl LEDStrip {
       0x06 => { // Set num_leds_to_update
         let num_leds = u16::from_be_bytes([command.data[0], command.data[1]]) as usize;
         self.num_leds_to_update = num_leds.min(NUM_LEDS);
+      },
+      0x07 => { // Set frames_per_second
+        let fps = command.data[0];
+        self.frames_per_second = fps;
       },
       _ => {
         // Unknown command, ignore

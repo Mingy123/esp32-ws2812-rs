@@ -89,6 +89,7 @@ impl SerialCommand {
       0x04 => self.length >= 5,  // Manual color input: 2 bytes index + at least 3 bytes RGB
       0x05 => self.length >= 4,  // Set frame per cycle: 4 bytes (f32)
       0x06 => self.length >= 2,  // Set num_leds_to_update: 2 bytes (u16)
+      0x07 => self.length >= 1,  // Set frames_per_second: 1 byte (u8)
       _ => false, // Unknown action
     }
   }

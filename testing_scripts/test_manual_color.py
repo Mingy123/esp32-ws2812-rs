@@ -95,13 +95,13 @@ class LEDController:
         # Due to 1024 byte payload limit, we can only send up to 340 LEDs at once
         # (2 bytes for start index + 340*3 = 1022 bytes)
         # For 280 LEDs: 2 + 280*3 = 842 bytes, which is within the limit
-        
+
         # Build payload: start_index (2 bytes) + RGB data (3 bytes per LED)
         payload = struct.pack('>H', 0)  # Start at index 0
-        
+
         for r, g, b in colors:
             payload += bytes([r, g, b])
-        
+
         self.send_frame(self.ACTION_MANUAL_COLOR_INPUT, payload)
 
     def set_led_range(self, start_index, colors):
@@ -114,18 +114,18 @@ class LEDController:
         """
         if start_index + len(colors) > self.NUM_LEDS:
             raise ValueError(f"LED range exceeds strip length")
-        
+
         # Check payload size limit
         payload_size = 2 + len(colors) * 3
         if payload_size > 1024:
             raise ValueError(f"Payload too large: {payload_size} bytes (max 1024)")
-        
+
         # Build payload: start_index (2 bytes) + RGB data (3 bytes per LED)
         payload = struct.pack('>H', start_index)
-        
+
         for r, g, b in colors:
             payload += bytes([r, g, b])
-        
+
         self.send_frame(self.ACTION_MANUAL_COLOR_INPUT, payload)
 
 
@@ -156,28 +156,28 @@ def animate_moving_pixel(controller, fps=30, duration=None):
                     colors.append((255, 0, 0))  # Red
                 else:
                     colors.append((0, 0, 0))    # Off
-            
+
             # Send to controller
             controller.set_all_leds(colors)
-            
+
             # Update position (cycle from 0 to 279)
             position = (position + 1) % controller.NUM_LEDS
             frame_count += 1
-            
+
             # Print status every second
             if frame_count % fps == 0:
                 elapsed = time.time() - start_time
                 actual_fps = frame_count / elapsed if elapsed > 0 else 0
                 print(f"Frame {frame_count:5d} | Position: {position:3d} | "
                       f"Elapsed: {elapsed:.1f}s | Actual FPS: {actual_fps:.1f}")
-            
+
             # Check duration
             if duration is not None and (time.time() - start_time) >= duration:
                 break
-            
+
             # Delay for next frame
             time.sleep(frame_delay)
-            
+
     except KeyboardInterrupt:
         print("\n\nAnimation stopped by user")
         elapsed = time.time() - start_time
@@ -193,16 +193,16 @@ def test_partial_update(controller):
     Sets LEDs 100-110 to green.
     """
     print("Testing partial update: Setting LEDs 100-110 to green")
-    
+
     # First, clear all LEDs
     colors_all_off = [(0, 0, 0)] * controller.NUM_LEDS
     controller.set_all_leds(colors_all_off)
     time.sleep(0.5)
-    
+
     # Now set LEDs 100-110 to green
     colors_green = [(0, 255, 0)] * 11  # 11 LEDs (100-110 inclusive)
     controller.set_led_range(100, colors_green)
-    
+
     print("Green segment should be visible at LEDs 100-110")
 
 
@@ -211,29 +211,29 @@ def test_multiple_segments(controller):
     Test updating multiple segments of the strip.
     """
     print("Testing multiple segments")
-    
+
     # Clear all
     colors_all_off = [(0, 0, 0)] * controller.NUM_LEDS
     controller.set_all_leds(colors_all_off)
     time.sleep(0.5)
-    
+
     # Set first 10 LEDs to red
     print("Setting LEDs 0-9 to red")
     colors_red = [(255, 0, 0)] * 10
     controller.set_led_range(0, colors_red)
     time.sleep(0.5)
-    
+
     # Set middle 10 LEDs to green
     print("Setting LEDs 135-144 to green")
     colors_green = [(0, 255, 0)] * 10
     controller.set_led_range(135, colors_green)
     time.sleep(0.5)
-    
+
     # Set last 10 LEDs to blue
     print("Setting LEDs 270-279 to blue")
     colors_blue = [(0, 0, 255)] * 10
     controller.set_led_range(270, colors_blue)
-    
+
     print("Three colored segments should be visible")
 
 
@@ -241,7 +241,7 @@ def main():
     """Main function."""
     try:
         controller = LEDController('/dev/mcu0')
-        
+
         print("RGB LED Manual Color Input Test")
         print("=" * 50)
         print("\nTest Options:")
@@ -252,9 +252,9 @@ def main():
         print("  5. Test multiple segments")
         print("  6. Clear all LEDs")
         print("  7. Exit")
-        
+
         choice = input("\nEnter your choice (1-7): ").strip()
-        
+
         if choice == '1':
             animate_moving_pixel(controller, fps=30)
         elif choice == '2':
@@ -276,9 +276,9 @@ def main():
             print("Exiting...")
         else:
             print("Error: Invalid choice")
-        
+
         controller.close()
-        
+
     except serial.SerialException as e:
         print(f"Error: Could not open serial port - {e}", file=sys.stderr)
         sys.exit(1)

@@ -66,3 +66,9 @@ Therefore we need another buffer to store recently read bytes. This is put in th
 We can use the `find_next_header_and_shift` function to find the next 0xAA byte in the buffer (if any)
 to attempt to continue forming a frame from there. And if it fails, we throw away the data until the next
 0xAA byte, and start again. This makes for a pretty robust error recovery process.
+
+## Adding a new command type
+
+Write a new block in the match statement in LEDStrip::apply_command().  
+Register the new command and the minimum payload length in SerialCommand::validate_length_with_action().
+Update docs/serial_protocol.md accordingly.

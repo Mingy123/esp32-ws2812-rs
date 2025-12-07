@@ -21,6 +21,21 @@ class LEDController:
     ACTION_MANUAL_COLOR_INPUT = 0x04
     ACTION_SET_FRAME_PER_CYCLE = 0x05
     ACTION_SET_NUM_LEDS_TO_UPDATE = 0x06
+    ACTION_SET_FRAMES_PER_SECOND = 0x07
+    def set_frames_per_second(self, fps, chunked=False):
+        """
+        Set frames per second.
+
+        Args:
+            fps: Frames per second (integer 0-255)
+            chunked: If True, send data in small random chunks with delays
+        """
+        if not (0 <= fps <= 255):
+            raise ValueError("Frames per second must be between 0 and 255")
+        payload = bytes([fps])
+        self.send_frame(self.ACTION_SET_FRAMES_PER_SECOND, payload, chunked=chunked)
+        if not chunked:
+            print(f"Frames per second set to {fps}")
 
     def __init__(self, port='/dev/mcu0', baudrate=115200, timeout=1):
         """
@@ -256,14 +271,15 @@ def main():
             print("  7. Set strip setting to RainbowCycle")
             print("  8. Turn LED strip ON (chunked - test buffering)")
             print("  9. Turn LED strip OFF (chunked - test buffering)")
-            print("  10. Set brightness (chunked - test buffering)")
-            print("  11. Send malformed data (test error recovery)")
-            print("  12. Send malformed data chunked (test buffered error recovery)")
-            print("  13. Set frame per cycle (animation speed)")
-            print("  14. Set num_leds_to_update")
-            print("  15. Exit")
+            print(" 10. Set brightness (chunked - test buffering)")
+            print(" 11. Send malformed data (test error recovery)")
+            print(" 12. Send malformed data chunked (test buffered error recovery)")
+            print(" 13. Set frame per cycle (animation speed)")
+            print(" 14. Set num_leds_to_update")
+            print(" 15. Set frames per second")
+            print(" 16. Exit")
 
-            choice = input("\nEnter your choice (1-15): ").strip()
+            choice = input("\nEnter your choice (1-16): ").strip()
 
             if choice == '1':
                 controller.control_onoff(True)
@@ -348,10 +364,19 @@ def main():
                 except ValueError:
                     print("Error: Invalid number of LEDs")
             elif choice == '15':
+                try:
+                    fps = int(input("Enter frames per second (0-255): ").strip())
+                    if 0 <= fps <= 255:
+                        controller.set_frames_per_second(fps)
+                    else:
+                        print("Error: Frames per second must be between 0 and 255")
+                except ValueError:
+                    print("Error: Invalid frames per second value")
+            elif choice == '16':
                 print("Exiting...")
                 break
             else:
-                print("Error: Invalid choice. Please enter 1-15.")
+                print("Error: Invalid choice. Please enter 1-16.")
 
         controller.close()
 

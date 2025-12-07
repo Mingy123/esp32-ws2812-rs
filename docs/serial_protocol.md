@@ -36,6 +36,7 @@ The `Length` field specifies the length of the `Payload` field in bytes, i.e. `N
 | 0x04   | Manual color input        | Manually set the color of each pixel    |
 | 0x05   | Set phase_step            | 4 bytes float (0 - 1) (big endian)      |
 | 0x06   | Set num_leds_to_update    | 2 bytes unsigned integer (big endian)   |
+| 0x07   | Set frames_per_second     | 1 byte unsigned integer                 |
 
 ## Payloads
 

@@ -19,9 +19,6 @@ use esp_hal::usb_serial_jtag::UsbSerialJtag;
 use heapless::spsc::{Producer, Queue};
 use rgb_led::{LEDStrip, NUM_LEDS, StripSetting, SerialParser};
 
-const FRAME_PER_SECOND: u32 = 25;
-const FRAME_DURATION_MS: f32 = 1000.0 / FRAME_PER_SECOND as f32;
-
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
   loop {}
@@ -79,7 +76,6 @@ fn main() -> ! {
   };
 
   let mut usb_serial = UsbSerialJtag::new(peripherals.USB_DEVICE);
-  usb_serial.write(b"LED Strip Example Starting...\n").unwrap();
   usb_serial.set_interrupt_handler(usb_serial_isr);
   usb_serial.listen_rx_packet_recv_interrupt(); // Enable RX interrupt
   critical_section::with(|cs| USB_SERIAL.borrow_ref_mut(cs).replace(usb_serial)); // Store in mutex
@@ -107,14 +103,15 @@ fn main() -> ! {
   let mut serial_parser = SerialParser::new(consumer);
 
   loop {
-
     let now = Instant::now();
 
-    let command = serial_parser.read_buffer_into_command();
+    let frame_duration_ms = 1000.0 / (strip.get_frames_per_second() as f32);
 
+    let command = serial_parser.read_buffer_into_command();
     if let Some(command) = &command {
       strip.apply_command(command);
     }
+
     let changed = strip.update_pixels();
     if changed {
       strip.fill_pulse_data();
@@ -136,6 +133,6 @@ fn main() -> ! {
 
     // wait such that FRAME_DURATION_MS per frame is maintained
     let elapsed = now.elapsed();
-    delay.delay_micros(((FRAME_DURATION_MS * 1000.0) as u32).saturating_sub(elapsed.as_micros() as u32));
+    delay.delay_micros(((frame_duration_ms * 1000.0) as u32).saturating_sub(elapsed.as_micros() as u32));
   }
 }
