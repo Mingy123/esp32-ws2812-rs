@@ -33,6 +33,9 @@ The `Length` field specifies the length of the `Payload` field in bytes, i.e. `N
 | 0x01   | Control on/off            | 1 byte (0 = off, 1 = on)                |
 | 0x02   | Set global brightness     | 4 bytes float (big endian)              |
 | 0x03   | Set StripSetting          | Sets the StripSetting enum (see below)  |
+| 0x04   | Manual color input        | Manually set the color of each pixel    |
+| 0x05   | Set frame per cycle (0-1) | 4 bytes float (big endian)              |
+| 0x06   | Set num_leds_to_update    | 2 bytes unsigned integer (big endian)   |
 
 ## Payloads
 
@@ -48,6 +51,22 @@ will run the rainbow animation.
 | 0x01       | Custom (manual)           | None                                 |
 | 0x02       | Solid Color               | 3 bytes (R, G, B)                    |
 | 0x03       | Rainbow Cycle             | 4 bytes (f32): N cycles in strip     |
+
+### Manual Color Input Payload
+
+The payload first starts with the index of the first LED to set (2 bytes, big
+endian), followed by the color data for each LED in sequence.  
+Each LED color is represented by 3 bytes (R, G, B).
+
+The number of LEDs to set will be determined from the payload length.  
+For example, if the payload length is 11 bytes, the first 2 bytes are the
+starting index, and the remaining 9 bytes correspond to 3 LEDs (3 bytes each).
+
+Note: The maximum payload length is 1024 bytes, so the maximum number of LEDs
+that can be set in one command is limited by that.  
+For example, to set LEDs 0-340 (341 LEDs), the payload length would be
+2 + (341 * 3) = 1025 bytes, which exceeds the limit.  
+To set more than 340 LEDs, you must split it into multiple commands.
 
 ## CRC-16-CCITT Calculation
 

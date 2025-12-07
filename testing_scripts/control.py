@@ -18,6 +18,9 @@ class LEDController:
     ACTION_CONTROL_ONOFF = 0x01
     ACTION_SET_BRIGHTNESS = 0x02
     ACTION_SET_STRIPSETTING = 0x03
+    ACTION_MANUAL_COLOR_INPUT = 0x04
+    ACTION_SET_FRAME_PER_CYCLE = 0x05
+    ACTION_SET_NUM_LEDS_TO_UPDATE = 0x06
 
     def __init__(self, port='/dev/mcu0', baudrate=115200, timeout=1):
         """
@@ -161,6 +164,34 @@ class LEDController:
         if not chunked:
             print(f"Strip setting set to {description}")
 
+    def set_frame_per_cycle(self, frame_per_cycle, chunked=False):
+        """
+        Set frame per cycle (animation speed).
+
+        Args:
+            frame_per_cycle: Float value for frame increment per cycle (typically 0.0 to 1.0)
+            chunked: If True, send data in small random chunks with delays
+        """
+        # Pack as big-endian 32-bit float
+        payload = struct.pack('>f', frame_per_cycle)
+        self.send_frame(self.ACTION_SET_FRAME_PER_CYCLE, payload, chunked=chunked)
+        if not chunked:
+            print(f"Frame per cycle set to {frame_per_cycle}")
+
+    def set_num_leds_to_update(self, num_leds, chunked=False):
+        """
+        Set number of LEDs to update.
+
+        Args:
+            num_leds: Number of LEDs to update (0-280)
+            chunked: If True, send data in small random chunks with delays
+        """
+        # Pack as big-endian 16-bit unsigned integer
+        payload = struct.pack('>H', num_leds)
+        self.send_frame(self.ACTION_SET_NUM_LEDS_TO_UPDATE, payload, chunked=chunked)
+        if not chunked:
+            print(f"Number of LEDs to update set to {num_leds}")
+
     def send_malformed_data(self, chunked=False):
         """
         Send intentionally malformed data to test error handling.
@@ -225,9 +256,11 @@ def main():
             print("  10. Set brightness (chunked - test buffering)")
             print("  11. Send malformed data (test error recovery)")
             print("  12. Send malformed data chunked (test buffered error recovery)")
-            print("  13. Exit")
+            print("  13. Set frame per cycle (animation speed)")
+            print("  14. Set num_leds_to_update")
+            print("  15. Exit")
 
-            choice = input("\nEnter your choice (1-13): ").strip()
+            choice = input("\nEnter your choice (1-15): ").strip()
 
             if choice == '1':
                 controller.control_onoff(True)
@@ -284,10 +317,29 @@ def main():
             elif choice == '12':
                 controller.send_malformed_data(chunked=True)
             elif choice == '13':
+                try:
+                    frame_per_cycle = float(input("Enter frame per cycle (e.g., 0.01, 0.05): ").strip())
+                    if 0.0 <= frame_per_cycle <= 1.0:
+                        controller.set_frame_per_cycle(frame_per_cycle)
+                    else:
+                        print("Warning: Frame per cycle is typically between 0.0 and 1.0, but continuing...")
+                        controller.set_frame_per_cycle(frame_per_cycle)
+                except ValueError:
+                    print("Error: Invalid frame per cycle value")
+            elif choice == '14':
+                try:
+                    num_leds = int(input("Enter number of LEDs to update (0-280): ").strip())
+                    if 0 <= num_leds <= 280:
+                        controller.set_num_leds_to_update(num_leds)
+                    else:
+                        print("Error: Number of LEDs must be between 0 and 280")
+                except ValueError:
+                    print("Error: Invalid number of LEDs")
+            elif choice == '15':
                 print("Exiting...")
                 break
             else:
-                print("Error: Invalid choice. Please enter 1-13.")
+                print("Error: Invalid choice. Please enter 1-15.")
 
         controller.close()
 

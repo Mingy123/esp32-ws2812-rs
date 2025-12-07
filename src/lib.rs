@@ -6,9 +6,9 @@ mod command;
 use esp_hal::rmt::PulseCode;
 
 use crate::algo::{hsv_to_rgb, rgb_to_pulses};
+use crate::command::SerialCommand;
 
 pub use crate::algo::print_elapsed_time;
-pub use crate::command::SerialCommand;
 pub use crate::command::SerialParser;
 
 pub const NUM_LEDS: usize = 280;
@@ -79,6 +79,8 @@ pub struct LEDStrip {
   frame: f32,
   /// How much to increment frame per update (speed of animation)
   frame_per_cycle: f32,
+  /// Number of LEDs to update when filling pulse data
+  num_leds_to_update: usize,
 }
 
 impl Default for LEDStrip {
@@ -97,6 +99,7 @@ impl LEDStrip {
       brightness: 1.0,
       frame: 0.0,
       frame_per_cycle: 0.01,
+      num_leds_to_update: NUM_LEDS,
     }
   }
 
@@ -114,8 +117,17 @@ impl LEDStrip {
   // only the first part should be sent.
   // The last PulseCode needs to be the end marker.
 
-  /// Copy pulse data into the provided buffer.
+  /// Wrapper to get pulse data based on num_leds_to_update
   pub fn get_pulse_data<'a>(&self, buffer: &'a mut [PulseCode]) -> &'a [PulseCode] {
+    if self.num_leds_to_update >= NUM_LEDS {
+      self.get_pulse_data_all(buffer)
+    } else {
+      self.get_pulse_data_limited(self.num_leds_to_update, buffer)
+    }
+  }
+
+  /// Copy pulse data into the provided buffer.
+  fn get_pulse_data_all<'a>(&self, buffer: &'a mut [PulseCode]) -> &'a [PulseCode] {
     if buffer.len() < self.pulse_data.len() {
       panic!("Buffer too small for pulse data");
     }
@@ -125,7 +137,7 @@ impl LEDStrip {
 
   /// Copy pulse data for `num` LEDs into the provided buffer.
   /// Adds end marker after the specified number of LEDs.
-  pub fn get_pulse_data_limited<'a>(&self, num: usize, buffer: &'a mut [PulseCode]) -> &'a [PulseCode] {
+  fn get_pulse_data_limited<'a>(&self, num: usize, buffer: &'a mut [PulseCode]) -> &'a [PulseCode] {
     let len = if num <= NUM_LEDS { num } else { NUM_LEDS };
     let required_len = len * 24 + 1;
     if buffer.len() < required_len {
@@ -170,7 +182,7 @@ impl LEDStrip {
 
   pub fn update_pixels(&mut self) -> bool {
     let mut changed = false;
-    
+
     if !self.is_on {
       changed = self.clear();
       return changed;
@@ -211,6 +223,7 @@ impl LEDStrip {
       }
       StripSetting::Custom => {
         // For the user to custom set pixels directly, do nothing here
+        changed = true;
       }
     }
     // Advance frame for animations
@@ -229,21 +242,14 @@ impl LEDStrip {
     changed
   }
 
-  // TODO: implement more commands
   /// Applies a SerialCommand modifying the LED strip settings or individual pixels.
   pub fn apply_command(&mut self, command: &SerialCommand) {
     match command.action {
       0x01 => { // Set on / off
-        if command.length < 1 {
-          return;
-        }
         let state = command.data[0];
         self.is_on = state != 0;
       },
       0x02 => { // Set global brightness
-        if command.length < 4 {
-          return;
-        }
         let brightness = f32::from_be_bytes([
           command.data[0],
           command.data[1],
@@ -253,17 +259,11 @@ impl LEDStrip {
         self.set_brightness(brightness);
       },
       0x03 => { // Set StripSetting
-        if command.length < 1 {
-          return;
-        }
         let setting_id = command.data[0];
         let setting = match setting_id {
           0x00 => StripSetting::Off,
           0x01 => StripSetting::Custom,
           0x02 => {
-            if command.length < 4 {
-              return;
-            }
             StripSetting::SolidColor {
               r: command.data[1],
               g: command.data[2],
@@ -271,9 +271,6 @@ impl LEDStrip {
             }
           },
           0x03 => {
-            if command.length < 5 {
-              return;
-            }
             let cycles = f32::from_be_bytes([
               command.data[1],
               command.data[2],
@@ -285,6 +282,39 @@ impl LEDStrip {
           _ => return, // Unknown setting, ignore
         };
         self.set_setting(setting);
+      },
+      0x04 => { // Manual color input
+        let start_index = u16::from_be_bytes([command.data[0], command.data[1]]) as usize;
+        let color_data = &command.data[2..(command.length as usize)];
+        let num_leds = color_data.len() / 3;
+
+        self.set_setting(StripSetting::Custom);
+
+        for i in 0..num_leds {
+          let led_index = start_index + i;
+          if led_index >= NUM_LEDS {
+            break; // Don't exceed strip bounds
+          }
+          let offset = i * 3;
+          self.set_pixel(led_index, RGBPixel::new(
+            color_data[offset],
+            color_data[offset + 1],
+            color_data[offset + 2],
+          ));
+        }
+      },
+      0x05 => { // Set frame per cycle
+        let frame_per_cycle = f32::from_be_bytes([
+          command.data[0],
+          command.data[1],
+          command.data[2],
+          command.data[3],
+        ]);
+        self.set_frame_per_cycle(frame_per_cycle);
+      },
+      0x06 => { // Set num_leds_to_update
+        let num_leds = u16::from_be_bytes([command.data[0], command.data[1]]) as usize;
+        self.num_leds_to_update = num_leds.min(NUM_LEDS);
       },
       _ => {
         // Unknown command, ignore

@@ -2,7 +2,8 @@ use core::panic;
 
 use heapless::spsc::Consumer;
 
-/// One frame (command) received over serial
+/// One frame (command) received over serial.
+/// It is guaranteed that data exists for the length specified.
 pub struct SerialCommand {
   /// Type of command
   pub action: u8,
@@ -64,6 +65,32 @@ impl SerialCommand {
   /// Verify that the checksum field matches the calculated checksum
   pub fn verify_checksum(&self) -> bool {
     self.checksum == self.calculate_checksum()
+  }
+
+  /// Validate that the action is valid and the length meets the minimum required
+  pub fn validate_length_with_action(&self) -> bool {
+    match self.action {
+      0x01 => self.length >= 1,  // Control on/off: 1 byte
+      0x02 => self.length >= 4,  // Set global brightness: 4 bytes (f32)
+      0x03 => {
+        // Set StripSetting: at least 1 byte for setting ID
+        if self.length < 1 {
+          return false;
+        }
+        // Check minimum length based on setting ID
+        match self.data[0] {
+          0x00 => self.length >= 1, // Off: just ID
+          0x01 => self.length >= 1, // Custom: just ID
+          0x02 => self.length >= 4, // SolidColor: ID + 3 bytes RGB
+          0x03 => self.length >= 5, // RainbowCycle: ID + 4 bytes f32
+          _ => false, // Unknown setting ID
+        }
+      }
+      0x04 => self.length >= 5,  // Manual color input: 2 bytes index + at least 3 bytes RGB
+      0x05 => self.length >= 4,  // Set frame per cycle: 4 bytes (f32)
+      0x06 => self.length >= 2,  // Set num_leds_to_update: 2 bytes (u16)
+      _ => false, // Unknown action
+    }
   }
 }
 
@@ -158,7 +185,6 @@ impl SerialParser {
       }
 
       let action = self.buffer[1];
-      // TODO: check that action is valid
       let length = ((self.buffer[2] as u16) << 8) | (self.buffer[3] as u16);
 
       if length > 1024 {
@@ -181,6 +207,16 @@ impl SerialParser {
       result.length = length;
       for i in 0..length as usize {
         result.data[i] = self.buffer[4 + i];
+      }
+
+      // Validate action and payload length
+      if !result.validate_length_with_action() {
+        // Invalid action or insufficient payload, find next header
+        if !self.find_next_header_and_shift() {
+          return None;
+        } else {
+          continue;
+        }
       }
 
       let checksum_offset = 4 + length as usize;
