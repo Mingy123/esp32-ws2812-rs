@@ -4,6 +4,7 @@ mod algo;
 mod command;
 
 use esp_hal::rmt::PulseCode;
+use micromath::F32Ext;
 
 use crate::algo::{hsv_to_rgb, rgb_to_pulses};
 use crate::command::SerialCommand;
@@ -45,22 +46,11 @@ impl RGBPixel {
 #[derive(Copy, Clone)]
 pub enum StripSetting {
   Custom,
+  Breathing { r: u8, g: u8, b: u8 },
   SolidColor { r: u8, g: u8, b: u8 },
   /// Rainbow cycle animation. `cycles` defines how many full rainbow cycles
   /// appear across the entire strip length (e.g., 1.0 = one rainbow, 2.0 = two rainbows)
   RainbowCycle { cycles: f32 },
-}
-
-impl From<u8> for StripSetting {
-  fn from(value: u8) -> Self {
-    match value {
-      0 => StripSetting::Custom,
-      1 => StripSetting::Custom,
-      2 => StripSetting::SolidColor { r: 255, g: 0, b: 0 },
-      3 => StripSetting::RainbowCycle { cycles: 2.0 },
-      _ => StripSetting::Custom,
-    }
-  }
 }
 
 pub struct LEDStrip {
@@ -188,6 +178,21 @@ impl LEDStrip {
       return changed;
     }
     match self.setting {
+      StripSetting::Breathing { r, g, b } => {
+        // Calculate brightness factor using sine wave
+        let brightness_factor = (0.5 + 0.5 * (self.phase * core::f32::consts::TAU).sin()) * self.brightness;
+        let new_r = ((r as f32 * brightness_factor).clamp(0.0, 255.0)) as u8;
+        let new_g = ((g as f32 * brightness_factor).clamp(0.0, 255.0)) as u8;
+        let new_b = ((b as f32 * brightness_factor).clamp(0.0, 255.0)) as u8;
+        for pixel in self.pixels.iter_mut() {
+          if pixel.r != new_r || pixel.g != new_g || pixel.b != new_b {
+            changed = true;
+            pixel.r = new_r;
+            pixel.g = new_g;
+            pixel.b = new_b;
+          }
+        }
+      }
       StripSetting::SolidColor { r, g, b } => {
         for pixel in self.pixels.iter_mut() {
           let new_r = ((r as f32 * self.brightness).clamp(0.0, 255.0)) as u8;
@@ -259,7 +264,13 @@ impl LEDStrip {
         let setting_id = command.data[0];
         let setting = match setting_id {
           0x00 => StripSetting::Custom,
-          0x01 => StripSetting::Custom,
+          0x01 => {
+            StripSetting::Breathing {
+              r: command.data[1],
+              g: command.data[2],
+              b: command.data[3],
+            }
+          },
           0x02 => {
             StripSetting::SolidColor {
               r: command.data[1],

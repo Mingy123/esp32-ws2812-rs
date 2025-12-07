@@ -79,8 +79,8 @@ impl SerialCommand {
         }
         // Check minimum length based on setting ID
         match self.data[0] {
-          0x00 => self.length >= 1, // Off: just ID
-          0x01 => self.length >= 1, // Custom: just ID
+          0x00 => self.length >= 1, // Custom: just ID
+          0x01 => self.length >= 4, // Breathing: ID + 3 bytes RGB
           0x02 => self.length >= 4, // SolidColor: ID + 3 bytes RGB
           0x03 => self.length >= 5, // RainbowCycle: ID + 4 bytes f32
           _ => false, // Unknown setting ID

@@ -134,16 +134,21 @@ class LEDController:
         Set strip setting (animation/pattern mode).
 
         Args:
-            setting_id: Setting ID (0x00=Off, 0x01=Custom, 0x02=SolidColor, 0x03=RainbowCycle)
-            r: Red value for SolidColor (0-255)
-            g: Green value for SolidColor (0-255)
-            b: Blue value for SolidColor (0-255)
+            setting_id: Setting ID (0x00=Custom, 0x01=Breathing, 0x02=SolidColor, 0x03=RainbowCycle)
+            r: Red value for Breathing/SolidColor (0-255)
+            g: Green value for Breathing/SolidColor (0-255)
+            b: Blue value for Breathing/SolidColor (0-255)
             cycles: Number of rainbow cycles for RainbowCycle (float)
             chunked: If True, send data in small random chunks with delays
         """
         payload = bytes([setting_id])
 
-        if setting_id == 0x02:  # SolidColor
+        if setting_id == 0x01:  # Breathing
+            if r is None or g is None or b is None:
+                raise ValueError("Breathing requires r, g, b values")
+            payload += bytes([r, g, b])
+            description = f"Breathing(R={r}, G={g}, B={b})"
+        elif setting_id == 0x02:  # SolidColor
             if r is None or g is None or b is None:
                 raise ValueError("SolidColor requires r, g, b values")
             payload += bytes([r, g, b])
@@ -154,8 +159,6 @@ class LEDController:
             payload += struct.pack('>f', cycles)
             description = f"RainbowCycle(cycles={cycles})"
         elif setting_id == 0x00:
-            description = "Custom"
-        elif setting_id == 0x01:
             description = "Custom"
         else:
             raise ValueError(f"Invalid setting_id: {setting_id}")
@@ -248,18 +251,19 @@ def main():
             print("  2. Turn LED strip OFF")
             print("  3. Set brightness")
             print("  4. Set strip setting to Custom")
-            print("  5. Set strip setting to SolidColor")
-            print("  6. Set strip setting to RainbowCycle")
-            print("  7. Turn LED strip ON (chunked - test buffering)")
-            print("  8. Turn LED strip OFF (chunked - test buffering)")
-            print("  9. Set brightness (chunked - test buffering)")
-            print("  10. Send malformed data (test error recovery)")
-            print("  11. Send malformed data chunked (test buffered error recovery)")
-            print("  12. Set frame per cycle (animation speed)")
-            print("  13. Set num_leds_to_update")
-            print("  14. Exit")
+            print("  5. Set strip setting to Breathing")
+            print("  6. Set strip setting to SolidColor")
+            print("  7. Set strip setting to RainbowCycle")
+            print("  8. Turn LED strip ON (chunked - test buffering)")
+            print("  9. Turn LED strip OFF (chunked - test buffering)")
+            print("  10. Set brightness (chunked - test buffering)")
+            print("  11. Send malformed data (test error recovery)")
+            print("  12. Send malformed data chunked (test buffered error recovery)")
+            print("  13. Set frame per cycle (animation speed)")
+            print("  14. Set num_leds_to_update")
+            print("  15. Exit")
 
-            choice = input("\nEnter your choice (1-14): ").strip()
+            choice = input("\nEnter your choice (1-15): ").strip()
 
             if choice == '1':
                 controller.control_onoff(True)
@@ -282,12 +286,23 @@ def main():
                     g = int(input("Enter green (0-255): ").strip())
                     b = int(input("Enter blue (0-255): ").strip())
                     if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
-                        controller.set_strip_setting(0x02, r=r, g=g, b=b)  # SolidColor
+                        controller.set_strip_setting(0x01, r=r, g=g, b=b)  # Breathing
                     else:
                         print("Error: RGB values must be between 0 and 255")
                 except ValueError:
                     print("Error: Invalid RGB values")
             elif choice == '6':
+                try:
+                    r = int(input("Enter red (0-255): ").strip())
+                    g = int(input("Enter green (0-255): ").strip())
+                    b = int(input("Enter blue (0-255): ").strip())
+                    if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
+                        controller.set_strip_setting(0x02, r=r, g=g, b=b)  # SolidColor
+                    else:
+                        print("Error: RGB values must be between 0 and 255")
+                except ValueError:
+                    print("Error: Invalid RGB values")
+            elif choice == '7':
                 try:
                     cycles = float(input("Enter number of rainbow cycles (e.g., 1.0, 2.0): ").strip())
                     if cycles > 0:
@@ -296,11 +311,11 @@ def main():
                         print("Error: Cycles must be greater than 0")
                 except ValueError:
                     print("Error: Invalid cycles value")
-            elif choice == '7':
-                controller.control_onoff(True, chunked=True)
             elif choice == '8':
-                controller.control_onoff(False, chunked=True)
+                controller.control_onoff(True, chunked=True)
             elif choice == '9':
+                controller.control_onoff(False, chunked=True)
+            elif choice == '10':
                 try:
                     brightness = float(input("Enter brightness (0.0 to 1.0): ").strip())
                     if 0.0 <= brightness <= 1.0:
@@ -309,11 +324,11 @@ def main():
                         print("Error: Brightness must be between 0.0 and 1.0")
                 except ValueError:
                     print("Error: Invalid brightness value")
-            elif choice == '10':
-                controller.send_malformed_data(chunked=False)
             elif choice == '11':
-                controller.send_malformed_data(chunked=True)
+                controller.send_malformed_data(chunked=False)
             elif choice == '12':
+                controller.send_malformed_data(chunked=True)
+            elif choice == '13':
                 try:
                     frame_per_cycle = float(input("Enter frame per cycle (e.g., 0.01, 0.05): ").strip())
                     if 0.0 <= frame_per_cycle <= 1.0:
@@ -323,7 +338,7 @@ def main():
                         controller.set_frame_per_cycle(frame_per_cycle)
                 except ValueError:
                     print("Error: Invalid frame per cycle value")
-            elif choice == '13':
+            elif choice == '14':
                 try:
                     num_leds = int(input("Enter number of LEDs to update (0-280): ").strip())
                     if 0 <= num_leds <= 280:
@@ -332,11 +347,11 @@ def main():
                         print("Error: Number of LEDs must be between 0 and 280")
                 except ValueError:
                     print("Error: Invalid number of LEDs")
-            elif choice == '14':
+            elif choice == '15':
                 print("Exiting...")
                 break
             else:
-                print("Error: Invalid choice. Please enter 1-14.")
+                print("Error: Invalid choice. Please enter 1-15.")
 
         controller.close()
 

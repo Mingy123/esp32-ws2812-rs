@@ -34,7 +34,7 @@ The `Length` field specifies the length of the `Payload` field in bytes, i.e. `N
 | 0x02   | Set global brightness     | 4 bytes float (big endian)              |
 | 0x03   | Set StripSetting          | Sets the StripSetting enum (see below)  |
 | 0x04   | Manual color input        | Manually set the color of each pixel    |
-| 0x05   | Set frame per cycle (0-1) | 4 bytes float (big endian)              |
+| 0x05   | Set phase_step            | 4 bytes float (0 - 1) (big endian)      |
 | 0x06   | Set num_leds_to_update    | 2 bytes unsigned integer (big endian)   |
 
 ## Payloads
@@ -42,13 +42,12 @@ The `Length` field specifies the length of the `Payload` field in bytes, i.e. `N
 ### StripSetting Payload
 
 StripSetting controls what happens in `update_pixels()`.  
-For example, "Off" will clear all LEDs, Custom will do nothing, RainbowCycle
-will run the rainbow animation.
+Custom will do nothing.
 
 | Setting ID | Description               | Additional Payload                   |
 |------------|---------------------------|--------------------------------------|
 | 0x00       | Custom (manual)           | None                                 |
-| 0x01       | Custom (manual)           | None                                 |
+| 0x01       | Breathing                 | 3 bytes (R, G, B)                    |
 | 0x02       | Solid Color               | 3 bytes (R, G, B)                    |
 | 0x03       | Rainbow Cycle             | 4 bytes (f32): N cycles in strip     |
 
