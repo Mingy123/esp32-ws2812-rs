@@ -15,7 +15,7 @@ use esp_hal::gpio::Level;
 use esp_hal::{handler, main};
 use esp_hal::rmt::{PulseCode, Rmt, TxChannelConfig, TxChannelCreator};
 use esp_hal::time::{Instant, Rate};
-use esp_hal::usb_serial_jtag::UsbSerialJtag;
+use esp_hal::usb_serial_jtag::{UsbSerialJtag, UsbSerialJtagRx};
 use heapless::spsc::{Producer, Queue};
 use rgb_led::{LEDStrip, NUM_LEDS, SerialParser};
 
@@ -28,7 +28,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-static USB_SERIAL: Mutex<RefCell<Option<UsbSerialJtag<'static, esp_hal::Blocking>>>> =
+static USB_SERIAL_RX: Mutex<RefCell<Option<UsbSerialJtagRx<'static, esp_hal::Blocking>>>> =
   Mutex::new(RefCell::new(None));
 
 static mut USB_QUEUE: Queue<u8, { 16*1024 }> = Queue::new();
@@ -37,8 +37,8 @@ static mut USB_PRODUCER: Option<Producer<'static, u8>> = None;
 #[handler]
 fn usb_serial_isr() {
   critical_section::with(|cs| {
-    let mut usb_serial = USB_SERIAL.borrow_ref_mut(cs);
-    if let Some(usb_serial) = usb_serial.as_mut() {
+    let mut usb_serial_rx = USB_SERIAL_RX.borrow_ref_mut(cs);
+    if let Some(usb_serial_rx) = usb_serial_rx.as_mut() {
       // Read and store in buffer. Data will be processed in main loop.
       // I'd like to do "If buffer is full, discard oldest data."
       // But I made myself able to access only the Producer here (for performance gains hopefully)
@@ -46,14 +46,14 @@ fn usb_serial_isr() {
       unsafe {
         #[allow(static_mut_refs)]
         if let Some(producer) = USB_PRODUCER.as_mut() {
-          while let Ok(byte) = usb_serial.read_byte() {
+          while let Ok(byte) = usb_serial_rx.read_byte() {
             if producer.enqueue(byte).is_err() {
               break; // Buffer full, discard remaining data
             }
           }
         }
       }
-      usb_serial.reset_rx_packet_recv_interrupt();
+      usb_serial_rx.reset_rx_packet_recv_interrupt();
     }
   });
 }
@@ -78,7 +78,15 @@ fn main() -> ! {
   let mut usb_serial = UsbSerialJtag::new(peripherals.USB_DEVICE);
   usb_serial.set_interrupt_handler(usb_serial_isr);
   usb_serial.listen_rx_packet_recv_interrupt(); // Enable RX interrupt
-  critical_section::with(|cs| USB_SERIAL.borrow_ref_mut(cs).replace(usb_serial)); // Store in mutex
+  let (usb_serial_rx, mut usb_serial_tx) = usb_serial.split();
+  critical_section::with(|cs| USB_SERIAL_RX.borrow_ref_mut(cs).replace(usb_serial_rx)); // Store in mutex
+
+  // test write
+  let message = b"WS2812B RGB LED Controller Ready!\n";
+  for byte in message.iter() {
+    usb_serial_tx.write_byte_nb(*byte).ok();
+  }
+  usb_serial_tx.flush_tx_nb().ok();
 
   // Configure TX channel on GPIO3
   let mut channel = rmt
@@ -115,19 +123,13 @@ fn main() -> ! {
       channel = transaction.wait().unwrap();
     }
 
-    // For some reason if this runs and I disconnect serial monitor, the strip stops updating.
-    // Probably hanging on the write?
-    // critical_section::with(|cs| {
-    //   if let Some(usb_serial) = USB_SERIAL.borrow_ref_mut(cs).as_mut() {
-    //     print_elapsed_time(
-    //       usb_serial,
-    //       elapsed,
-    //     );
-    //   }
-    // });
-
     // wait such that FRAME_DURATION_MS per frame is maintained
     let elapsed = now.elapsed();
+
+    // For some reason if this runs and I disconnect serial monitor, the strip stops updating.
+    // Probably hanging on the write. Should use non-blocking (nb) write and flush
+    // print_elapsed_time(&mut usb_serial_tx, elapsed);
+
     delay.delay_micros(((frame_duration_ms * 1000.0) as u32).saturating_sub(elapsed.as_micros() as u32));
   }
 }

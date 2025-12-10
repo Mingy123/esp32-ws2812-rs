@@ -76,7 +76,7 @@ pub fn rgb_to_pulses(pixel: &RGBPixel, pulses: &mut [PulseCode]) {
 
 /// Helper function to format and print elapsed time to USB serial
 /// Formats time as milliseconds with microsecond precision (e.g., "12.345ms")
-pub fn print_elapsed_time<'a, Dm: esp_hal::DriverMode>(serial: &mut esp_hal::usb_serial_jtag::UsbSerialJtag<'a, Dm>, elapsed: esp_hal::time::Duration) {
+pub fn print_elapsed_time<'a, Dm: esp_hal::DriverMode>(serial: &mut esp_hal::usb_serial_jtag::UsbSerialJtagTx<'a, Dm>, elapsed: esp_hal::time::Duration) {
   let micros = elapsed.as_micros();
   let millis = micros / 1000;
   let frac = micros % 1000;
