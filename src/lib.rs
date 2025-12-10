@@ -75,6 +75,8 @@ pub struct LEDStrip {
   frames_per_second: u8,
   /// Whether to reverse the animation direction (subtract from phase instead of add)
   reverse_animation: bool,
+  /// Whether anything other than settings has been changed over commands
+  raw_value_changed: bool,
 }
 
 impl Default for LEDStrip {
@@ -96,6 +98,7 @@ impl LEDStrip {
       num_leds_to_update: NUM_LEDS,
       frames_per_second: 25,
       reverse_animation: false,
+      raw_value_changed: false,
     }
   }
 
@@ -182,10 +185,11 @@ impl LEDStrip {
   /// Compute new pixel values based on the current setting and update internal pixel buffer.
   /// Returns true if any pixel values were changed.
   pub fn update_pixels(&mut self) -> bool {
-    let mut changed = false;
+    let mut changed = self.raw_value_changed;
+    self.raw_value_changed = false;
 
     if !self.is_on {
-      changed = self.clear();
+      changed |= self.clear();
       return changed;
     }
     match self.setting {
@@ -236,7 +240,6 @@ impl LEDStrip {
       }
       StripSetting::Custom => {
         // For the user to custom set pixels directly, do nothing here
-        changed = true;
       }
     }
     // Advance phase for animations
@@ -250,6 +253,14 @@ impl LEDStrip {
 
   /// Applies a SerialCommand modifying the LED strip settings or individual pixels.
   pub fn apply_command(&mut self, command: &SerialCommand) {
+    // Mark if raw values have changed
+    match command.action {
+      0x01 | 0x02 | 0x04 => {
+        self.raw_value_changed = true;
+      },
+      _ => {}
+    }
+    // Actually apply the command
     match command.action {
       0x01 => { // Set on / off
         let state = command.data[0];
