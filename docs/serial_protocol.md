@@ -82,3 +82,12 @@ To set more than 340 LEDs, you must split it into multiple commands.
 The implementation can be found in `src/command.rs`.  
 The CRC is calculated over the `Action`, `Length`, and `Payload` fields in that order.
 `Length` is treated as big-endian when calculating the CRC, i.e. the high byte is processed first.
+
+# Response Frame
+
+Upon rendering the LED strip, the microcontroller will send a response frame back to the host PC.  
+The format of the response frame is as follows:
+
+0xBB (1 byte) | Status Code (1 byte) | CRC16 (2 bytes, big endian)
+
+Status Code will just be 0 for now.

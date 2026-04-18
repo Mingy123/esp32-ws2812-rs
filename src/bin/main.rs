@@ -123,6 +123,13 @@ fn main() -> ! {
       channel = transaction.wait().unwrap();
     }
 
+    // Send response frame back to host PC as soon as frame is rendered
+    let response = [0xBB, 0x00, 0xDF, 0xF8];
+    for byte in response.iter() {
+      usb_serial_tx.write_byte_nb(*byte).ok();
+    }
+    usb_serial_tx.flush_tx_nb().ok();
+
     // wait such that FRAME_DURATION_MS per frame is maintained
     let elapsed = now.elapsed();
 
