@@ -245,9 +245,7 @@ impl SerialParser {
 
       // Valid frame, remove it from the buffer and preserve any trailing bytes
       let remaining_bytes = self.buffer_len_in_use - frame_size;
-      for i in 0..remaining_bytes {
-        self.buffer[i] = self.buffer[i + frame_size];
-      }
+      self.buffer.copy_within(frame_size..self.buffer_len_in_use, 0);
       self.buffer_len_in_use = remaining_bytes;
       return Some(result);
     }
