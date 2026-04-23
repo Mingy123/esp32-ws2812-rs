@@ -9,10 +9,10 @@ a SPSC (Single Provider Single Consumer) queue, which makes sense since only the
 provide data and only the main loop, which is not multithreaded, will consume data.  
 And we have to put the provider in a static mut because the ISR is some special function that is
 called on a hardware interrupt and we cannot pass parameters to it like normal.
-  
-USB_SERIAL is in a static mutex so that both the ISR function and the main runtime can access it.  
-Though as of now the main loop doesn't use it because printing to serial caused some issues.  
-So if that remains I could put that in a static mut just like the provider.
+
+The UsbSerialJtag is split into Rx and Tx. the UsbSerialJtagRx is stored in a global Mutex,  
+while the Tx is stored in the main loop, because Rx is used by the ISR to read into the buffer  
+and Tx will be used to send responses after processing a frame in the main loop.
 
 ## `struct LEDStrip`
 
@@ -34,8 +34,6 @@ This holds an array of RGBPixel, which is just 3 u8's, and other settings of the
 Everything else should be self-explanatory.
 
 ## Serial interface
-
-I defend my design choices here
 
 As mentioned earlier, a heapless queue was used to store data from the ISR. The ISR receives raw bytes from
 the serial connection and will throw them all on this queue.  
