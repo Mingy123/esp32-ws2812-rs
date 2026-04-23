@@ -144,9 +144,7 @@ impl SerialParser {
         let new_len = self.buffer_len_in_use - shift_amount;
 
         // Copy data to the beginning
-        for j in 0..new_len {
-          self.buffer[j] = self.buffer[j + shift_amount];
-        }
+        self.buffer.copy_within(shift_amount..self.buffer_len_in_use, 0);
 
         self.buffer_len_in_use = new_len;
         return true;
