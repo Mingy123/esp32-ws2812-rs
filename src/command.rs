@@ -161,7 +161,7 @@ impl SerialParser {
   // 1. Fill buffer from consumer until we have enough data or consumer is empty
   // 2. Try to parse a frame from the buffer
   // 3. If frame is malformed, find next header in buffer and retry
-  // 4. If frame is valid, clear buffer and return the command
+  // 4. If frame is valid, remove it from buffer and return the command
   /// Read bytes from the consumer buffer and parse into a SerialCommand
   pub fn read_buffer_into_command(
     &mut self
@@ -243,8 +243,12 @@ impl SerialParser {
         }
       }
 
-      // Valid frame, clear the buffer and return
-      self.buffer_len_in_use = 0;
+      // Valid frame, remove it from the buffer and preserve any trailing bytes
+      let remaining_bytes = self.buffer_len_in_use - frame_size;
+      for i in 0..remaining_bytes {
+        self.buffer[i] = self.buffer[i + frame_size];
+      }
+      self.buffer_len_in_use = remaining_bytes;
       return Some(result);
     }
   }
