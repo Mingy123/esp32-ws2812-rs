@@ -170,7 +170,7 @@ impl SerialParser {
       while let Some(byte) = self.consumer.dequeue() {
         self.buffer_push(byte);
 
-        if self.buffer_len_in_use >= 1056 {
+        if self.buffer_len_in_use >= self.buffer.len() {
           break;
         }
       }
