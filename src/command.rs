@@ -144,9 +144,7 @@ impl SerialParser {
         let new_len = self.buffer_len_in_use - shift_amount;
 
         // Copy data to the beginning
-        for j in 0..new_len {
-          self.buffer[j] = self.buffer[j + shift_amount];
-        }
+        self.buffer.copy_within(shift_amount..self.buffer_len_in_use, 0);
 
         self.buffer_len_in_use = new_len;
         return true;
@@ -161,7 +159,7 @@ impl SerialParser {
   // 1. Fill buffer from consumer until we have enough data or consumer is empty
   // 2. Try to parse a frame from the buffer
   // 3. If frame is malformed, find next header in buffer and retry
-  // 4. If frame is valid, clear buffer and return the command
+  // 4. If frame is valid, remove it from buffer and return the command
   /// Read bytes from the consumer buffer and parse into a SerialCommand
   pub fn read_buffer_into_command(
     &mut self
@@ -172,7 +170,7 @@ impl SerialParser {
       while let Some(byte) = self.consumer.dequeue() {
         self.buffer_push(byte);
 
-        if self.buffer_len_in_use >= 1056 {
+        if self.buffer_len_in_use >= self.buffer.len() {
           break;
         }
       }
@@ -243,8 +241,10 @@ impl SerialParser {
         }
       }
 
-      // Valid frame, clear the buffer and return
-      self.buffer_len_in_use = 0;
+      // Valid frame, remove it from the buffer and preserve any trailing bytes
+      let remaining_bytes = self.buffer_len_in_use - frame_size;
+      self.buffer.copy_within(frame_size..self.buffer_len_in_use, 0);
+      self.buffer_len_in_use = remaining_bytes;
       return Some(result);
     }
   }
