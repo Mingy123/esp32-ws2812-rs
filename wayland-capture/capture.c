@@ -19,7 +19,7 @@ struct capture {
     bool              done;
 };
 
-static int anon_shm_open(void) {
+static int get_shm(void) {
     char name[32] = "/wl-capture";
     //snprintf(name, sizeof(name), "/wl-capture-%d", getpid());
     int fd = shm_open(name, O_RDWR | O_CREAT, 0600);
@@ -40,7 +40,8 @@ static void frame_buffer(void *data,
     cap->stride = stride;
 
     int size = stride * height;
-    int fd = anon_shm_open();
+    printf("Capturing %dx%d, stride %d, size %d\n", width, height, stride, size);
+    int fd = get_shm();
     ftruncate(fd, size);
     cap->data = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 
@@ -117,6 +118,10 @@ static const struct wl_registry_listener registry_listener = {
 
 int main(void) {
     struct wl_display  *display  = wl_display_connect(NULL);
+    if (!display) {
+        fprintf(stderr, "Failed to connect to Wayland display\n");
+        return 1;
+    }
     struct wl_registry *registry = wl_display_get_registry(display);
 
     wl_registry_add_listener(registry, &registry_listener, NULL);

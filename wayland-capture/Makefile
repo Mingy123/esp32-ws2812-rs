@@ -1,14 +1,14 @@
 CC = gcc
-CFLAGS = $(shell pkg-config --cflags wayland-client)
-LDFLAGS = $(shell pkg-config --libs wayland-client) -lrt
+WLFLAGS = $(shell pkg-config --cflags --libs wayland-client)
+DRMFLAGS = $(shell pkg-config --cflags --libs gbm libdrm)
 
-TARGET = capture
-SRC = capture.c wlr-screencopy-unstable-v1.c
+all: capture multi_capture
 
-all: $(TARGET)
+capture: capture.c wlr-screencopy-unstable-v1.c
+	$(CC) capture.c wlr-screencopy-unstable-v1.c $(WLFLAGS) -o capture
 
-$(TARGET): $(SRC)
-	$(CC) $(SRC) $(CFLAGS) $(LDFLAGS) -o $(TARGET)
+multi_capture: multi_capture.c wlr-screencopy-unstable-v1.c
+	$(CC) multi_capture.c wlr-screencopy-unstable-v1.c linux-dmabuf-v1.c $(WLFLAGS) $(DRMFLAGS) -o multi_capture
 
 clean:
-	rm -f $(TARGET)
+	rm -f capture multi_capture
