@@ -8,7 +8,7 @@ capture: capture.c wlr-screencopy-unstable-v1.c
 	$(CC) capture.c wlr-screencopy-unstable-v1.c $(WLFLAGS) -o capture
 
 multi_capture: multi_capture.c wlr-screencopy-unstable-v1.c
-	$(CC) multi_capture.c wlr-screencopy-unstable-v1.c linux-dmabuf-v1.c $(WLFLAGS) $(DRMFLAGS) -o multi_capture
+	$(CC) multi_capture.c ext-foreign-toplevel-list.c ext-image-capture-source.c ext-image-copy-capture.c linux-dmabuf-v1.c $(WLFLAGS) $(DRMFLAGS) -o multi_capture
 
 clean:
 	rm -f capture multi_capture

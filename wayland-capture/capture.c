@@ -12,7 +12,7 @@ static struct wl_shm                     *shm        = NULL;
 static struct wl_output                  *output     = NULL;
 static struct zwlr_screencopy_manager_v1 *screencopy = NULL;
 
-struct capture {
+struct capture_session {
     struct wl_buffer *buffer;
     void             *data;
     int               width, height, stride;
@@ -32,7 +32,7 @@ static void frame_buffer(void *data,
         struct zwlr_screencopy_frame_v1 *frame,
         uint32_t format, uint32_t width, uint32_t height, uint32_t stride)
 {
-    struct capture *cap = data;
+    struct capture_session *cap = data;
     if (cap->buffer) return; // already set up from a previous buffer event
 
     cap->width  = width;
@@ -59,7 +59,7 @@ static void frame_ready(void *data,
         struct zwlr_screencopy_frame_v1 *frame,
         uint32_t tv_sec_hi, uint32_t tv_sec_lo, uint32_t tv_nsec)
 {
-    ((struct capture *)data)->done = true;
+    ((struct capture_session *)data)->done = true;
 }
 
 static void frame_failed(void *data,
@@ -80,7 +80,7 @@ static void frame_buffer_done(void *data,
         struct zwlr_screencopy_frame_v1 *frame)
 {
     // All buffer format offers are done — now safe to copy
-    struct capture *cap = data;
+    struct capture_session *cap = data;
     zwlr_screencopy_frame_v1_copy(frame, cap->buffer);
 }
 
@@ -128,7 +128,7 @@ int main(void) {
     wl_display_roundtrip(display);
     wl_display_roundtrip(display);
 
-    struct capture cap = {0};
+    struct capture_session cap = {0};
 
     struct zwlr_screencopy_frame_v1 *frame =
         zwlr_screencopy_manager_v1_capture_output(screencopy, 0, output);

@@ -1,5 +1,5 @@
 // Comment out to use shm buffers instead.
-#define USE_DMABUF
+// #define USE_DMABUF
 // The advantages of using dmabuf are not certain. However the general idea
 // is that the copying of the frame is done on VRAM, and only specific
 // portions of the screen will be copied over through PCIe.
@@ -13,7 +13,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <wayland-client.h>
-#include "wlr-screencopy-unstable-v1.h"
+#include "ext-image-copy-capture.h"
+#include "ext-image-capture-source.h"
 
 #ifdef USE_DMABUF
 #include "linux-dmabuf-v1.h"
@@ -23,8 +24,9 @@
 
 #define MAX_OUTPUTS 8
 
-static struct wl_shm                     *shm        = NULL;
-static struct zwlr_screencopy_manager_v1 *screencopy = NULL;
+static struct wl_shm *shm = NULL;
+static struct ext_output_image_capture_source_manager_v1 *capture_source_manager = NULL;
+static struct ext_image_copy_capture_manager_v1 *copy_manager = NULL;
 #ifdef USE_DMABUF
 static struct zwp_linux_dmabuf_v1 *dmabuf_iface = NULL;
 static uint32_t map_stride[MAX_OUTPUTS];
@@ -41,9 +43,11 @@ struct output_info {
     char              name[64];
 };
 
-struct capture {
+struct capture_session {
+    struct ext_image_copy_capture_session_v1 *copy_session;
     struct wl_buffer *buffer;
     void             *data;
+    uint32_t          shm_format, dmabuf_format;
     int               width, height, stride;
     bool              done;
     int               output_index;
@@ -51,7 +55,8 @@ struct capture {
 
 static struct output_info outputs[MAX_OUTPUTS];
 static int                output_count = 0;
-static struct capture     caps[MAX_OUTPUTS];
+static struct capture_session   caps[MAX_OUTPUTS];
+static const struct ext_image_copy_capture_frame_v1_listener frame_listener;
 
 // --- Output listener ---
 
@@ -102,160 +107,182 @@ static int open_shm(int output_index) {
     return fd;
 }
 
-// --- Frame listener ---
+// --- Session listener ---
 
-// Provides information about wl_shm buffer parameters that need to be
-// used for this frame. This event is sent once after the frame is created
-// if wl_shm buffers are supported.
-// "Hey, you can make a shm buffer"
-static void frame_buffer(void *data,
-        struct zwlr_screencopy_frame_v1 *frame,
-        uint32_t format, uint32_t width, uint32_t height, uint32_t stride)
+static void buffer_size(void *data,
+        struct ext_image_copy_capture_session_v1 *session, uint32_t width, uint32_t height)
 {
-    #ifdef USE_DMABUF
-    return;
-    #endif
-
-    struct capture *cap = data;
-    if (cap->buffer) {
-        fprintf(stderr, "[%d] warning: multiple buffer events, ignoring\n",
-                cap->output_index);
-        return;
-    }
-
+    struct capture_session *cap = data;
     cap->width  = width;
     cap->height = height;
-    cap->stride = stride;
-
-    int size = stride * height;
-    int fd = open_shm(cap->output_index);
-    ftruncate(fd, size);
-    cap->data = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-
-    struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
-    cap->buffer = wl_shm_pool_create_buffer(pool, 0,
-                      width, height, stride, format);
-    wl_shm_pool_destroy(pool);
-    close(fd);
-
-    printf("[%d] shm created: %dx%d stride=%d\n",
-           cap->output_index, width, height, stride);
+    cap->stride = width * 4;  // assume ARGB8888
 }
 
-static void frame_flags(void *data,
-        struct zwlr_screencopy_frame_v1 *frame, uint32_t flags) {}
-
-// Called once the frame is copied, indicating it is available for reading.
-static void frame_ready(void *data,
-        struct zwlr_screencopy_frame_v1 *frame,
-        uint32_t tv_sec_hi, uint32_t tv_sec_lo, uint32_t tv_nsec)
+static void shm_format(void *data,
+        struct ext_image_copy_capture_session_v1 *session, uint32_t format)
 {
-    struct capture *cap = data;
-    cap->done = true;
-    // TODO: if using dmabuf, read from cap->data and send to ws2812
-    // or something else idk
-    // NOTE: consider using map_stride to optimise choice of locations to read
-    // NOTE: consider using damage events to minimise reads
-
-    // Don't think I need this
-    // // Re-arm immediately for continuous capture
-    // cap->done   = false;
-    // cap->buffer = NULL;  // will be re-allocated next frame_buffer event
-    // struct zwlr_screencopy_frame_v1 *next =
-    //     zwlr_screencopy_manager_v1_capture_output(
-    //         screencopy, 0, outputs[cap->output_index].output);
-    // zwlr_screencopy_frame_v1_add_listener(next, &frame_listener, cap);
+    struct capture_session *cap = data;
+    cap->shm_format = format;
 }
 
-// This event indicates that the attempted frame copy has failed.
-static void frame_failed(void *data,
-        struct zwlr_screencopy_frame_v1 *frame) {
-    struct capture *cap = data;
-    fprintf(stderr, "[%d] capture failed\n", cap->output_index);
-}
+// Gives a wl_array containing the device name that dma-buf buffers must be allocated on.
+// `device` is a wl_array of dev_t values
+static void dmabuf_device(void *data,
+        struct ext_image_copy_capture_session_v1 *session, struct wl_array *device)
+{}
 
-// carries the coordinates of the damaged region
-// Called right before the ready event when copy_with_damage is requested.
-// It may be generated multiple times for each copy_with_damage request.
-static void frame_damage(void *data,
-        struct zwlr_screencopy_frame_v1 *frame,
-        uint32_t x, uint32_t y, uint32_t width, uint32_t height) {}
-
-// Provides information about linux-dmabuf buffer parameters that
-// need to be used for this frame.
-// Called after the frame is created if linux-dmabuf is supported.
-static void frame_linux_dmabuf(void *data,
-        struct zwlr_screencopy_frame_v1 *frame,
-        uint32_t format, uint32_t width, uint32_t height)
+static void dmabuf_format(void *data,
+        struct ext_image_copy_capture_session_v1 *session, uint32_t format, struct wl_array *modifiers)
 {
-#ifdef USE_DMABUF
-    struct capture *cap = data;
-    if (cap->buffer) {
-        fprintf(stderr, "[%d] warning: multiple buffer events, ignoring\n",
-                cap->output_index);
-        return;
+    struct capture_session *cap = data;
+    cap->dmabuf_format = format;
+    printf("[%d] dmabuf format: 0x%08x modifiers:", cap->output_index, format);
+    for (size_t i = 0; i < modifiers->size / sizeof(uint64_t); i++) {
+        uint64_t modifier = ((uint64_t *)modifiers->data)[i];
+        printf(" 0x%016" PRIx64, modifier);
     }
-
-    int drm_fd = open("/dev/dri/renderD128", O_RDWR);
-    struct gbm_device *gbm = gbm_create_device(drm_fd);
-    gbm_bos[cap->output_index] = gbm_bo_create(
-        gbm, width, height, format,
-        GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR
-    );
-
-    int dmabuf_fd = gbm_bo_get_fd(gbm_bos[cap->output_index]);
-    uint32_t stride = gbm_bo_get_stride(gbm_bos[cap->output_index]);
-    uint64_t modifier = gbm_bo_get_modifier(gbm_bos[cap->output_index]);
-
-    struct zwp_linux_buffer_params_v1 *params =
-        zwp_linux_dmabuf_v1_create_params(dmabuf_iface);
-
-    zwp_linux_buffer_params_v1_add(params, dmabuf_fd, 0, 0, stride,
-        modifier >> 32, modifier & 0xffffffff);
-
-    cap->width = width;
-    cap->height = height;
-    cap->stride = stride;
-
-    cap->buffer = zwp_linux_buffer_params_v1_create_immed(params,
-        width, height, format, 0);
-
-    gbm_map[cap->output_index] = gbm_bo_map(
-        gbm_bos[cap->output_index],
-        0,
-        0,
-        width,
-        height,
-        GBM_BO_TRANSFER_READ,
-        &map_stride[cap->output_index],
-        &map_data[cap->output_index]
-    );
-
-    zwp_linux_buffer_params_v1_destroy(params);
-
-    printf("[%d] dmabuf created: %dx%d stride=%d\n",
-        cap->output_index, width, height, stride);
-#endif
+    printf("\n");
 }
 
-// all buffer types reported
-// This event is sent once after all buffer events have been sent.
-static void frame_buffer_done(void *data,
-        struct zwlr_screencopy_frame_v1 *frame)
+static void done(void *data,
+        struct ext_image_copy_capture_session_v1 *session)
 {
-    struct capture *cap = data;
-    // TODO: possibly do FPS limiting by doing the copy every n frames
-    zwlr_screencopy_frame_v1_copy(frame, cap->buffer);
+    struct capture_session *cap = data;
+    if (cap->buffer != NULL) {
+        printf("[%d] warning: buffer already exists, ignoring\n", cap->output_index);
+    }
+#ifdef USE_DMABUF
+        int drm_fd = open("/dev/dri/renderD128", O_RDWR);
+        struct gbm_device *gbm = gbm_create_device(drm_fd);
+
+        gbm_bos[cap->output_index] = gbm_bo_create(
+            gbm, cap->width, cap->height, cap->dmabuf_format,
+            GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR
+        );
+
+        int dmabuf_fd = gbm_bo_get_fd(gbm_bos[cap->output_index]);
+        uint32_t stride = gbm_bo_get_stride(gbm_bos[cap->output_index]);
+        uint64_t modifier = gbm_bo_get_modifier(gbm_bos[cap->output_index]);
+
+        struct zwp_linux_buffer_params_v1 *params =
+            zwp_linux_dmabuf_v1_create_params(dmabuf_iface);
+        zwp_linux_buffer_params_v1_add(
+            params, dmabuf_fd, 0, 0, stride, modifier >> 32, modifier & 0xffffffff
+        );
+
+        cap->stride = stride;
+        cap->buffer = zwp_linux_buffer_params_v1_create_immed(
+            params, cap->width, cap->height, cap->dmabuf_format, 0
+        );
+
+        gbm_map[cap->output_index] = gbm_bo_map(
+            gbm_bos[cap->output_index],
+            0,
+            0,
+            cap->width,
+            cap->height,
+            GBM_BO_TRANSFER_READ,
+            &map_stride[cap->output_index],
+            &map_data[cap->output_index]
+        );
+
+        zwp_linux_buffer_params_v1_destroy(params);
+        printf("[%d] dmabuf created: %dx%d stride=%d\n",
+            cap->output_index, cap->width, cap->height, stride);
+#else
+        int size = cap->stride * cap->height;
+        int fd = open_shm(cap->output_index);
+        ftruncate(fd, size);
+        cap->data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+        struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
+        cap->buffer = wl_shm_pool_create_buffer(
+            pool, 0, cap->width, cap->height, cap->stride, cap->shm_format
+        );
+        wl_shm_pool_destroy(pool);
+        close(fd);
+        printf("[%d] shm created: %dx%d stride=%d\n",
+               cap->output_index, cap->width, cap->height, cap->stride);
+#endif
+
+    struct ext_image_copy_capture_frame_v1 *new_frame =
+        ext_image_copy_capture_session_v1_create_frame(session);
+    ext_image_copy_capture_frame_v1_attach_buffer(new_frame, cap->buffer);
+    ext_image_copy_capture_frame_v1_add_listener(new_frame, &frame_listener, cap);
+    // I don't need to do this but the docs said I should damage the buffer
+    // I'm thinking the compositor takes in damage from both this code and the actual screen
+    // or maybe I just don't have the damage tracking feature
+    ext_image_copy_capture_frame_v1_damage_buffer(new_frame, 0, 0, cap->width, cap->height);
+    ext_image_copy_capture_frame_v1_capture(new_frame);
+    printf("[%d] capture started\n", cap->output_index);
 }
 
-static const struct zwlr_screencopy_frame_v1_listener frame_listener = {
-    .buffer       = frame_buffer,
-    .flags        = frame_flags,
-    .ready        = frame_ready,
-    .failed       = frame_failed,
-    .damage       = frame_damage,
-    .linux_dmabuf = frame_linux_dmabuf,
-    .buffer_done  = frame_buffer_done,
+static void stopped(void *data,
+        struct ext_image_copy_capture_session_v1 *session)
+{
+    struct capture_session *cap = data;
+    cap->copy_session = NULL;
+    ext_image_copy_capture_session_v1_destroy(session);
+}
+
+static const struct ext_image_copy_capture_session_v1_listener session_listener = {
+    .buffer_size        = buffer_size,
+    .shm_format         = shm_format,
+    .dmabuf_device      = dmabuf_device,
+    .dmabuf_format      = dmabuf_format,
+    .done               = done,
+    .stopped            = stopped,
+};
+
+
+// --- Frame listener ---
+
+static void transform(void *data,
+        struct ext_image_copy_capture_frame_v1 *frame, uint32_t transform)
+{}
+
+static void damage(void *data,
+        struct ext_image_copy_capture_frame_v1 *frame, int32_t x, int32_t y, int32_t width, int32_t height)
+{}
+
+static void presentation_time(void *data,
+        struct ext_image_copy_capture_frame_v1 *frame, uint32_t tv_sec_hi, uint32_t tv_sec_lo, uint32_t tv_nsec)
+{}
+
+static void frame_ready(void *data,
+        struct ext_image_copy_capture_frame_v1 *frame)
+{
+    struct capture_session *cap = data;
+
+    ext_image_copy_capture_frame_v1_destroy(frame);
+    struct ext_image_copy_capture_frame_v1 *new_frame =
+        ext_image_copy_capture_session_v1_create_frame(cap->copy_session);
+    ext_image_copy_capture_frame_v1_attach_buffer(new_frame, cap->buffer);
+    ext_image_copy_capture_frame_v1_add_listener(new_frame, &frame_listener, data);
+    // ext_image_copy_capture_frame_v1_damage_buffer(new_frame, 0, 0, cap->width, cap->height);
+    ext_image_copy_capture_frame_v1_capture(new_frame);
+}
+
+static void frame_failed(void *data,
+        struct ext_image_copy_capture_frame_v1 *frame, uint32_t reason)
+{
+    struct capture_session *cap = data;
+    fprintf(stderr, "Frame capture failed with reason %u\n", reason);
+    ext_image_copy_capture_frame_v1_destroy(frame);
+    struct ext_image_copy_capture_frame_v1 *new_frame =
+        ext_image_copy_capture_session_v1_create_frame(cap->copy_session);
+    ext_image_copy_capture_frame_v1_attach_buffer(new_frame, cap->buffer);
+    ext_image_copy_capture_frame_v1_add_listener(new_frame, &frame_listener, data);
+    // ext_image_copy_capture_frame_v1_damage_buffer(new_frame, 0, 0, cap->width, cap->height);
+    ext_image_copy_capture_frame_v1_capture(new_frame);
+}
+
+static const struct ext_image_copy_capture_frame_v1_listener frame_listener = {
+    .transform          = transform,
+    .damage             = damage,
+    .presentation_time  = presentation_time,
+    .ready              = frame_ready,
+    .failed             = frame_failed,
 };
 
 // --- Registry ---
@@ -275,14 +302,15 @@ static void registry_global(void *data, struct wl_registry *reg,
         wl_output_add_listener(info->output, &output_listener, info);
         output_count++;
 
-    } else if (!strcmp(interface, zwlr_screencopy_manager_v1_interface.name)) {
-        screencopy = wl_registry_bind(reg, name,
-                         &zwlr_screencopy_manager_v1_interface, 3);
+    } else if (!strcmp(interface, ext_output_image_capture_source_manager_v1_interface.name)) {
+        capture_source_manager = wl_registry_bind(reg, name, &ext_output_image_capture_source_manager_v1_interface, 1);
+
+    } else if (!strcmp(interface, ext_image_copy_capture_manager_v1_interface.name)) {
+        copy_manager = wl_registry_bind(reg, name, &ext_image_copy_capture_manager_v1_interface, 1);
 
     #ifdef USE_DMABUF
     } else if (!strcmp(interface, zwp_linux_dmabuf_v1_interface.name)) {
-        dmabuf_iface = wl_registry_bind(reg, name,
-                         &zwp_linux_dmabuf_v1_interface, 3);
+        dmabuf_iface = wl_registry_bind(reg, name, &zwp_linux_dmabuf_v1_interface, 3);
     #endif
     }
 }
@@ -345,6 +373,7 @@ int main(void) {
 
     struct wl_registry *registry = wl_display_get_registry(display);
     wl_registry_add_listener(registry, &registry_listener, NULL);
+    // Roundtrip to get registry events and output info
     wl_display_roundtrip(display);
     wl_display_roundtrip(display);
 
@@ -356,11 +385,13 @@ int main(void) {
     for (int i = 0; i < output_count; i++) {
         caps[i].output_index = i;
 
-        struct zwlr_screencopy_frame_v1 *frame =
-            zwlr_screencopy_manager_v1_capture_output(
-                screencopy, 0, outputs[i].output
-            );
-        zwlr_screencopy_frame_v1_add_listener(frame, &frame_listener, &caps[i]);
+        struct ext_image_capture_source_v1 *source = NULL;
+        source = ext_output_image_capture_source_manager_v1_create_source(capture_source_manager, outputs[i].output);
+
+        caps[i].copy_session = ext_image_copy_capture_manager_v1_create_session(copy_manager, source, 0);
+        ext_image_copy_capture_session_v1_add_listener(caps[i].copy_session, &session_listener, &caps[i]);
+
+        printf("[%d] capture session created\n", i);
     }
 
     signal(SIGINT, signal_handler);
