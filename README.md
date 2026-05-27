@@ -16,13 +16,10 @@ using an ESP32 microcontroller (ESP32-C3 in particular) via a custom serial prot
 
 ## Usage
 
-This project was generated with `esp-generate`, configured for the ESP32-C3.  
-If you want to build for a different board, you may need to:
-1. Change the board name from "esp32c3" to your desired board in `Cargo.toml` and `.cargo/config.toml`.
-2. Change the target from "riscv32imc-esp-espidf" to Xtensa or something in `.cargo/config.toml` and `rust-toolchain.toml`.
-3. Adjust any board-specific configurations in the code e.g. GPIO pin assignments in `src/bin/main.rs`.
+This project in configured for ESP32-C3 and ESP32-S3.  
+ESP32-S3 has not been tested thoroughly but it works with the onboard WS2812b.
 
-The ESP32-C3 board provides a built-in USB-Serial-JTAG peripheral, which is used for the serial communication to a host PC.  
+The boards provide a built-in USB-Serial-JTAG peripheral, which is used for the serial communication to a host PC.  
 A list of USB peripheral support for other ESP boards can be found here:  
 https://docs.espressif.com/projects/esp-iot-solution/en/latest/usb/usb_overview/usb_overview.html  
 ESP32-S2, ESP32-C2, and ESP8266 do not provide USB-Serial-JTAG. For ESP32-S2, USB-OTG may be implemented.
@@ -31,13 +28,22 @@ The serial protocol is documented in [docs/serial_protocol.md](docs/serial_proto
 
 ## Building and Flashing
 
-Make sure you have the ESP-IDF and Rust toolchain set up for embedded development:  
-https://docs.espressif.com/projects/rust/book/getting-started/toolchain.html
+Install the toolchains following [this guide](https://docs.espressif.com/projects/rust/book/getting-started/toolchain.html).  
+For ESP32-C3, install for RISC-V; For ESP32-S3, install for Xtensa.
 
-You probably also need `espflash`.
+You probably also need `espflash`:  
+`cargo install espflash --locked`
 
 Then, to build and flash:
 
+#### ESP32-C3
+
 ```sh
-cargo run --release
+cargo run --release --target riscv32imc-unknown-none-elf --features esp32c3
+```
+
+#### ESP32-S3
+
+```sh
+cargo run --release --target xtensa-esp32s3-none-elf --features esp32s3
 ```

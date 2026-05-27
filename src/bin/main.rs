@@ -6,6 +6,13 @@
   holding buffers for the duration of a data transfer."
 )]
 
+#[cfg(not(any(feature = "esp32c3", feature = "esp32s3")))]
+compile_error!("Select a target with --features esp32c3 or --features esp32s3");
+
+#[cfg(all(feature = "esp32c3", feature = "esp32s3"))]
+compile_error!("Only one target feature may be enabled at a time");
+
+
 use core::cell::RefCell;
 
 use critical_section::Mutex;
